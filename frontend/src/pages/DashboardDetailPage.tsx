@@ -373,12 +373,52 @@ export default function DashboardDetailPage() {
           <h3>Tasks</h3>
           <table className="table">
             <thead>
-              <tr><th>Task</th><th>Status</th><th>Owner</th><th>RAG</th><th>Actions</th></tr>
+              <tr><th>Task</th><th>Owner</th><th>Target</th><th>SLA</th><th>Publish</th><th>Status</th><th>RAG</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {tasks.map((t) => (
                 <tr key={t.id}>
-                  <td>{t.item_details}</td>
+                  <td>
+                    <input
+                      className="input"
+                      value={taskEdits[t.id]?.item_details ?? t.item_details}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], item_details: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={taskEdits[t.id]?.owner_id ?? t.owner_id}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], owner_id: e.target.value } }))}
+                    >
+                      <option value="">Owner</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      type="date"
+                      value={taskEdits[t.id]?.target_date ?? (t.target_date?.slice?.(0, 10) || t.target_date || "")}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], target_date: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      value={taskEdits[t.id]?.sla_days ?? (t.sla_days ?? "")}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], sla_days: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={taskEdits[t.id]?.publish_flag ?? t.publish_flag}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], publish_flag: e.target.checked } }))}
+                    />
+                  </td>
                   <td>
                     <select
                       className="select"
@@ -391,7 +431,6 @@ export default function DashboardDetailPage() {
                       <option value="Closed Accepted">Closed Accepted</option>
                     </select>
                   </td>
-                  <td>{t.owner_name}</td>
                   <td>
                     <select
                       className="select"
@@ -417,14 +456,81 @@ export default function DashboardDetailPage() {
           <h3>Risks</h3>
           <table className="table">
             <thead>
-              <tr><th>Risk</th><th>Impact</th><th>Owner</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Risk</th><th>Owner</th><th>Impact</th><th>Prob.</th><th>Mitigation</th><th>Target</th><th>Publish</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {risks.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.risk_title}</td>
-                  <td>{r.impact_level}/{r.probability}</td>
-                  <td>{r.owner_name}</td>
+                  <td>
+                    <input
+                      className="input"
+                      value={riskEdits[r.id]?.risk_title ?? r.risk_title}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], risk_title: e.target.value } }))}
+                    />
+                    <input
+                      className="input"
+                      value={riskEdits[r.id]?.risk_description ?? (r.risk_description || "")}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], risk_description: e.target.value } }))}
+                      style={{ marginTop: 6 }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={riskEdits[r.id]?.risk_owner ?? r.risk_owner}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], risk_owner: e.target.value } }))}
+                    >
+                      <option value="">Owner</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={riskEdits[r.id]?.impact_level ?? r.impact_level}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], impact_level: e.target.value } }))}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                      <option value="Critical">Critical</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={riskEdits[r.id]?.probability ?? r.probability}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], probability: e.target.value } }))}
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      value={riskEdits[r.id]?.mitigation_plan ?? (r.mitigation_plan || "")}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], mitigation_plan: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      type="date"
+                      value={riskEdits[r.id]?.target_mitigation_date ?? (r.target_mitigation_date?.slice?.(0, 10) || r.target_mitigation_date || "")}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], target_mitigation_date: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={riskEdits[r.id]?.publish_flag ?? r.publish_flag}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], publish_flag: e.target.checked } }))}
+                    />
+                  </td>
                   <td>
                     <select
                       className="select"
@@ -448,13 +554,51 @@ export default function DashboardDetailPage() {
           <h3>Decisions</h3>
           <table className="table">
             <thead>
-              <tr><th>Decision</th><th>Owner</th><th>Status</th><th>Deadline</th><th>Actions</th></tr>
+              <tr><th>Decision</th><th>Owner</th><th>Deadline</th><th>Publish</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {decisions.map((d) => (
                 <tr key={d.id}>
-                  <td>{d.decision_title}</td>
-                  <td>{d.owner_name}</td>
+                  <td>
+                    <input
+                      className="input"
+                      value={decisionEdits[d.id]?.decision_title ?? d.decision_title}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], decision_title: e.target.value } }))}
+                    />
+                    <input
+                      className="input"
+                      value={decisionEdits[d.id]?.decision_context ?? (d.decision_context || "")}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], decision_context: e.target.value } }))}
+                      style={{ marginTop: 6 }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={decisionEdits[d.id]?.decision_owner ?? d.decision_owner}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], decision_owner: e.target.value } }))}
+                    >
+                      <option value="">Owner</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      type="date"
+                      value={decisionEdits[d.id]?.decision_deadline ?? (d.decision_deadline?.slice?.(0, 10) || d.decision_deadline || "")}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], decision_deadline: e.target.value } }))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={decisionEdits[d.id]?.publish_flag ?? d.publish_flag}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], publish_flag: e.target.checked } }))}
+                    />
+                  </td>
                   <td>
                     <select
                       className="select"
@@ -467,7 +611,6 @@ export default function DashboardDetailPage() {
                       <option value="Deferred">Deferred</option>
                     </select>
                   </td>
-                  <td>{d.decision_deadline}</td>
                   <td className="inline-actions">
                     <button className="button" onClick={() => saveDecision(d.id)}>Save</button>
                   </td>

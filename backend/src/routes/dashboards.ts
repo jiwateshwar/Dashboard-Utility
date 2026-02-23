@@ -122,4 +122,22 @@ router.post("/:id/access", async (req, res) => {
   res.json({ ok: true });
 });
 
+router.get("/:id/access", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  const isOwner = await isDashboardOwner(userId, id);
+  const role = await getUserRole(userId);
+  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Owners only" });
+
+  const { rows } = await query(
+    `SELECT da.dashboard_id, da.user_id, da.can_view, da.can_edit, u.name, u.email
+     FROM dashboard_access da
+     JOIN users u ON u.id = da.user_id
+     WHERE da.dashboard_id = $1
+     ORDER BY u.name`,
+    [id]
+  );
+  res.json(rows);
+});
+
 export default router;

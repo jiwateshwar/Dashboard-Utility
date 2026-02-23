@@ -1,15 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
 :root {
-  --bg: #0f1417;
-  --panel: #161d22;
-  --accent: #e6b566;
-  --accent-2: #6bd1c7;
-  --text: #f3f5f7;
-  --muted: #9aa5b1;
-  --danger: #ef6a62;
-  --warn: #f0b429;
-  --ok: #5bbf73;
+  --bg: #f4f1ea;
+  --panel: #ffffff;
+  --accent: #d08b2c;
+  --accent-2: #2e8a84;
+  --text: #1b1f23;
+  --muted: #6b7280;
+  --danger: #c43d3d;
+  --warn: #c47b2f;
+  --ok: #2e7d5b;
 }
 
 * {
@@ -19,8 +19,9 @@
 body {
   margin: 0;
   font-family: "IBM Plex Sans", system-ui, sans-serif;
-  background: radial-gradient(circle at 10% 20%, rgba(230, 181, 102, 0.2), transparent 40%),
-    radial-gradient(circle at 90% 10%, rgba(107, 209, 199, 0.2), transparent 45%),
+  background:
+    radial-gradient(circle at 10% 20%, rgba(208, 139, 44, 0.15), transparent 45%),
+    radial-gradient(circle at 90% 10%, rgba(46, 138, 132, 0.12), transparent 45%),
     var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -39,8 +40,8 @@ a {
 
 .sidebar {
   padding: 24px;
-  background: linear-gradient(180deg, rgba(22, 29, 34, 0.95), rgba(18, 22, 26, 0.95));
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, #fdfbf7, #f6f2ea);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .brand {
@@ -62,7 +63,7 @@ a {
 
 .nav-item:hover,
 .nav-item.active {
-  background: rgba(230, 181, 102, 0.12);
+  background: rgba(208, 139, 44, 0.15);
   color: var(--text);
 }
 
@@ -74,8 +75,8 @@ a {
   background: var(--panel);
   border-radius: 16px;
   padding: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 12px 30px rgba(20, 16, 10, 0.08);
 }
 
 .grid {
@@ -95,15 +96,15 @@ a {
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #10151a;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fbfaf7;
   color: var(--text);
 }
 
 .button {
   border: none;
   background: var(--accent);
-  color: #1a1407;
+  color: #1b1408;
   padding: 10px 16px;
   border-radius: 10px;
   font-weight: 600;
@@ -118,9 +119,9 @@ a {
   display: inline-block;
 }
 
-.tag.red { background: rgba(239, 106, 98, 0.2); color: var(--danger); }
-.tag.amber { background: rgba(240, 180, 41, 0.2); color: var(--warn); }
-.tag.green { background: rgba(91, 191, 115, 0.2); color: var(--ok); }
+.tag.red { background: rgba(196, 61, 61, 0.12); color: var(--danger); }
+.tag.amber { background: rgba(196, 123, 47, 0.15); color: var(--warn); }
+.tag.green { background: rgba(46, 125, 91, 0.12); color: var(--ok); }
 
 @media (max-width: 900px) {
   .app-shell {
@@ -141,7 +142,7 @@ a {
 .table th,
 .table td {
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   text-align: left;
 }
 
@@ -161,8 +162,8 @@ a {
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #10151a;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: #fbfaf7;
   color: var(--text);
 }
 
