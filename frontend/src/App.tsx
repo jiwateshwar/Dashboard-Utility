@@ -9,6 +9,8 @@ import TeamPage from "./pages/TeamPage";
 import SearchPage from "./pages/SearchPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AdminPage from "./pages/AdminPage";
+import EscalationRulesPage from "./pages/EscalationRulesPage";
+import AuditLogPage from "./pages/AuditLogPage";
 import Sidebar from "./components/Sidebar";
 
 export type User = {
@@ -49,6 +51,8 @@ export default function App() {
           <Route path="/team" element={<TeamPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/manage" element={<AdminPage />} />
+          <Route path="/escalations" element={<EscalationRulesPage />} />
+          <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -24,6 +24,15 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/manage">
         Admin & Owners
       </NavLink>
+      <NavLink className="nav-item" to="/snapshots">
+        Publishing
+      </NavLink>
+      <NavLink className="nav-item" to="/escalations">
+        Escalation Rules
+      </NavLink>
+      <NavLink className="nav-item" to="/audit">
+        Audit Log
+      </NavLink>
       <NavLink className="nav-item" to="/notifications">
         Escalations
       </NavLink>
