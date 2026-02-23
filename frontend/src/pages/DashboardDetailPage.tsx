@@ -12,6 +12,9 @@ export default function DashboardDetailPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [taskEdits, setTaskEdits] = useState<Record<string, any>>({});
+  const [riskEdits, setRiskEdits] = useState<Record<string, any>>({});
+  const [decisionEdits, setDecisionEdits] = useState<Record<string, any>>({});
 
   const [newTask, setNewTask] = useState({
     category_id: "",
@@ -161,6 +164,72 @@ export default function DashboardDetailPage() {
     }
   }
 
+  async function saveTask(id: string) {
+    const payload = taskEdits[id];
+    if (!payload) return;
+    try {
+      await api(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      setTaskEdits((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function requestTaskClose(id: string) {
+    try {
+      await api(`/tasks/${id}/close-request`, { method: "POST" });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function approveTask(id: string) {
+    try {
+      await api(`/tasks/${id}/approve`, { method: "POST" });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function saveRisk(id: string) {
+    const payload = riskEdits[id];
+    if (!payload) return;
+    try {
+      await api(`/risks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      setRiskEdits((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function saveDecision(id: string) {
+    const payload = decisionEdits[id];
+    if (!payload) return;
+    try {
+      await api(`/decisions/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+      setDecisionEdits((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
   if (!id) return null;
 
   return (
@@ -304,15 +373,41 @@ export default function DashboardDetailPage() {
           <h3>Tasks</h3>
           <table className="table">
             <thead>
-              <tr><th>Task</th><th>Status</th><th>Owner</th><th>RAG</th></tr>
+              <tr><th>Task</th><th>Status</th><th>Owner</th><th>RAG</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {tasks.map((t) => (
                 <tr key={t.id}>
                   <td>{t.item_details}</td>
-                  <td>{t.status}</td>
+                  <td>
+                    <select
+                      className="select"
+                      value={taskEdits[t.id]?.status ?? t.status}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], status: e.target.value } }))}
+                    >
+                      <option value="Open">Open</option>
+                      <option value="In Progress">In Progress</option>
+                      <option value="Closed Pending Approval">Closed Pending Approval</option>
+                      <option value="Closed Accepted">Closed Accepted</option>
+                    </select>
+                  </td>
                   <td>{t.owner_name}</td>
-                  <td><span className={`tag ${t.rag_status?.toLowerCase()}`}>{t.rag_status}</span></td>
+                  <td>
+                    <select
+                      className="select"
+                      value={taskEdits[t.id]?.rag_status ?? t.rag_status}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], rag_status: e.target.value } }))}
+                    >
+                      <option value="Green">Green</option>
+                      <option value="Amber">Amber</option>
+                      <option value="Red">Red</option>
+                    </select>
+                  </td>
+                  <td className="inline-actions">
+                    <button className="button" onClick={() => saveTask(t.id)}>Save</button>
+                    <button className="button" onClick={() => requestTaskClose(t.id)}>Request Close</button>
+                    <button className="button" onClick={() => approveTask(t.id)}>Approve</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -322,7 +417,7 @@ export default function DashboardDetailPage() {
           <h3>Risks</h3>
           <table className="table">
             <thead>
-              <tr><th>Risk</th><th>Impact</th><th>Owner</th><th>Status</th></tr>
+              <tr><th>Risk</th><th>Impact</th><th>Owner</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {risks.map((r) => (
@@ -330,7 +425,20 @@ export default function DashboardDetailPage() {
                   <td>{r.risk_title}</td>
                   <td>{r.impact_level}/{r.probability}</td>
                   <td>{r.owner_name}</td>
-                  <td>{r.status}</td>
+                  <td>
+                    <select
+                      className="select"
+                      value={riskEdits[r.id]?.status ?? r.status}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], status: e.target.value } }))}
+                    >
+                      <option value="Open">Open</option>
+                      <option value="Mitigated">Mitigated</option>
+                      <option value="Closed">Closed</option>
+                    </select>
+                  </td>
+                  <td className="inline-actions">
+                    <button className="button" onClick={() => saveRisk(r.id)}>Save</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -340,15 +448,29 @@ export default function DashboardDetailPage() {
           <h3>Decisions</h3>
           <table className="table">
             <thead>
-              <tr><th>Decision</th><th>Owner</th><th>Status</th><th>Deadline</th></tr>
+              <tr><th>Decision</th><th>Owner</th><th>Status</th><th>Deadline</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {decisions.map((d) => (
                 <tr key={d.id}>
                   <td>{d.decision_title}</td>
                   <td>{d.owner_name}</td>
-                  <td>{d.status}</td>
+                  <td>
+                    <select
+                      className="select"
+                      value={decisionEdits[d.id]?.status ?? d.status}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], status: e.target.value } }))}
+                    >
+                      <option value="Pending">Pending</option>
+                      <option value="Approved">Approved</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Deferred">Deferred</option>
+                    </select>
+                  </td>
                   <td>{d.decision_deadline}</td>
+                  <td className="inline-actions">
+                    <button className="button" onClick={() => saveDecision(d.id)}>Save</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
