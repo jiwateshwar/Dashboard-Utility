@@ -36,6 +36,7 @@ router.post("/generate", async (req, res) => {
 });
 router.get("/email/:dashboardId", async (req, res) => {
     const { dashboardId } = req.params;
+    const { preview } = req.query;
     const userId = req.session.userId;
     const canView = (await hasDashboardAccess(userId, dashboardId)) || (await isDashboardOwner(userId, dashboardId));
     if (!canView)
@@ -48,6 +49,11 @@ router.get("/email/:dashboardId", async (req, res) => {
     const date = rows[0]?.cycle_date || dayjs().format("YYYY-MM-DD");
     const eml = buildEml({ dashboardName, date, content });
     const filename = `PRISM_${dashboardName.replace(/\s+/g, "_")}_${dayjs(date).format("YYYYMMDD")}.eml`;
+    if (preview === "1" || preview === "true") {
+        res.setHeader("Content-Type", "text/html");
+        res.send(eml.split("\n\n").slice(1).join("\n\n"));
+        return;
+    }
     res.setHeader("Content-Type", "message/rfc822");
     res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     res.send(eml);

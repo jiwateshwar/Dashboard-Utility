@@ -44,21 +44,30 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar user={user} />
-      <main className="main">
-        <Routes>
-          <Route path="/" element={<DashboardsPage />} />
-          <Route path="/dashboards/:id" element={<DashboardDetailPage />} />
-          <Route path="/personal" element={<PersonalPage />} />
-          <Route path="/team" element={<TeamPage />} />
-          <Route path="/search" element={<SearchPage />} />
-          <Route path="/manage" element={<AdminPage />} />
-          <Route path="/snapshots" element={<SnapshotsPage />} />
-          <Route path="/escalations" element={<EscalationRulesPage />} />
-          <Route path="/audit" element={<AuditLogPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+      <div>
+        <div className="header">
+          <div>
+            <div className="header-title">PRISM</div>
+            <div className="header-subtitle">Performance Reporting, Insights & Status Management</div>
+          </div>
+          <div style={{ fontSize: 13, color: "#6b7280" }}>{user.name}</div>
+        </div>
+        <main className="main">
+          <Routes>
+            <Route path="/" element={<DashboardsPage />} />
+            <Route path="/dashboards/:id" element={<DashboardDetailPage />} />
+            <Route path="/personal" element={<PersonalPage />} />
+            <Route path="/team" element={<TeamPage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/manage" element={<AdminPage />} />
+            <Route path="/snapshots" element={<SnapshotsPage />} />
+            <Route path="/escalations" element={<EscalationRulesPage />} />
+            <Route path="/audit" element={<AuditLogPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
     </div>
   );
 }

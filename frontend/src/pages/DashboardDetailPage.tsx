@@ -12,6 +12,7 @@ export default function DashboardDetailPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(true);
   const [taskEdits, setTaskEdits] = useState<Record<string, any>>({});
   const [riskEdits, setRiskEdits] = useState<Record<string, any>>({});
   const [decisionEdits, setDecisionEdits] = useState<Record<string, any>>({});
@@ -53,9 +54,9 @@ export default function DashboardDetailPage() {
     if (!id) return;
     Promise.all([
       api(`/dashboards/${id}/summary`),
-      api(`/tasks?dashboard_id=${id}`),
-      api(`/risks?dashboard_id=${id}`),
-      api(`/decisions?dashboard_id=${id}`),
+      api(`/tasks?dashboard_id=${id}&include_archived=${showArchived}`),
+      api(`/risks?dashboard_id=${id}&include_archived=${showArchived}`),
+      api(`/decisions?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/accounts`),
       api(`/categories?dashboard_id=${id}`),
       api(`/users`)
@@ -70,7 +71,7 @@ export default function DashboardDetailPage() {
         setUsers(u);
       })
       .catch((err: any) => setError(err.message || "Failed to load"));
-  }, [id]);
+  }, [id, showArchived]);
 
   const accountOptions = useMemo(() => accounts.filter((a) => a.is_active !== false), [accounts]);
   const categoryOptions = useMemo(() => categories.filter((c) => c.is_active !== false), [categories]);
@@ -78,9 +79,9 @@ export default function DashboardDetailPage() {
   async function refresh() {
     if (!id) return;
     const [t, r, d, s] = await Promise.all([
-      api(`/tasks?dashboard_id=${id}`),
-      api(`/risks?dashboard_id=${id}`),
-      api(`/decisions?dashboard_id=${id}`),
+      api(`/tasks?dashboard_id=${id}&include_archived=${showArchived}`),
+      api(`/risks?dashboard_id=${id}&include_archived=${showArchived}`),
+      api(`/decisions?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/dashboards/${id}/summary`)
     ]);
     setTasks(t);
@@ -236,6 +237,11 @@ export default function DashboardDetailPage() {
     <div>
       <h1>Dashboard Overview</h1>
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
+      <div className="inline-actions" style={{ marginBottom: 12 }}>
+        <label className="badge">
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show Archived
+        </label>
+      </div>
       {summary && (
         <div className="grid three" style={{ marginBottom: 24 }}>
           <div className="card">

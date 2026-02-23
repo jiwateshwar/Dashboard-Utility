@@ -18,7 +18,7 @@ function decisionRag(deadline: string) {
 }
 
 router.get("/", async (req, res) => {
-  const { dashboard_id } = req.query as any;
+  const { dashboard_id, include_archived } = req.query as any;
   if (!dashboard_id) return res.status(400).json({ error: "dashboard_id required" });
   const userId = req.session.userId!;
   const canEdit = await canEditDashboard(userId, dashboard_id);
@@ -32,7 +32,7 @@ router.get("/", async (req, res) => {
      FROM decisions d
      JOIN users u ON u.id = d.decision_owner
      WHERE d.dashboard_id = $1
-       AND d.is_archived = false
+       AND ($5::boolean IS TRUE OR d.is_archived = false)
        AND (
          d.publish_flag = true OR
          d.decision_owner = $2 OR
@@ -41,7 +41,7 @@ router.get("/", async (req, res) => {
          d.created_by = ANY($3) OR
          $4
        )`,
-    [dashboard_id, userId, subordinates, owner]
+    [dashboard_id, userId, subordinates, owner, include_archived === "true"]
   );
 
   res.json(rows.map((r) => ({ ...r, decision_rag: decisionRag(r.decision_deadline) })));

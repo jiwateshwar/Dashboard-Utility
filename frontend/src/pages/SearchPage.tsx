@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 
 export default function SearchPage() {
@@ -7,11 +7,18 @@ export default function SearchPage() {
   const [status, setStatus] = useState("");
   const [rag, setRag] = useState("");
   const [aging, setAging] = useState("");
+  const [dashboards, setDashboards] = useState<any[]>([]);
+  const [dashboardId, setDashboardId] = useState("");
+
+  useEffect(() => {
+    api("/dashboards").then(setDashboards).catch(() => setDashboards([]));
+  }, []);
 
   async function runSearch() {
     if (!query) return;
     const params = new URLSearchParams();
     params.set("q", query);
+    if (dashboardId) params.set("dashboard_id", dashboardId);
     if (status) params.set("status", status);
     if (rag) params.set("rag", rag);
     if (aging) params.set("aging_gt", aging);
@@ -24,6 +31,12 @@ export default function SearchPage() {
       <h1>Global Search</h1>
       <div className="form-row">
         <input className="input" placeholder="Search tasks, risks, decisions..." value={query} onChange={(e) => setQuery(e.target.value)} />
+        <select className="select" value={dashboardId} onChange={(e) => setDashboardId(e.target.value)}>
+          <option value="">All Dashboards</option>
+          {dashboards.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
         <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Any Status</option>
           <option value="Open">Open</option>

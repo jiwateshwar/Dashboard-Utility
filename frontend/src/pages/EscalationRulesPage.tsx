@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-const ruleTemplates = [
-  { label: "Task aging > days (notify manager)", type: "task_aging_gt", entity: "Task" },
-  { label: "Critical risk (notify owner)", type: "critical_risk", entity: "Risk" },
-  { label: "Decision overdue > days (notify owner)", type: "decision_overdue_gt", entity: "Decision" }
-];
-
 export default function EscalationRulesPage() {
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [selectedDashboard, setSelectedDashboard] = useState("");
@@ -16,8 +10,8 @@ export default function EscalationRulesPage() {
 
   const [newRule, setNewRule] = useState({
     rule_name: "",
-    template: ruleTemplates[0].type,
-    days: "20",
+    entity_type: "Task",
+    condition_json: '{"type":"task_aging_gt","days":20,"notify":"manager"}',
     is_active: true
   });
 
@@ -38,27 +32,22 @@ export default function EscalationRulesPage() {
   async function createRule() {
     setError(null);
     try {
-      const template = ruleTemplates.find((t) => t.type === newRule.template) || ruleTemplates[0];
-      const condition_json: any = { type: template.type };
-      if (template.type === "task_aging_gt" || template.type === "decision_overdue_gt") {
-        condition_json.days = Number(newRule.days || "0");
-        condition_json.notify = "manager";
-      }
+      const parsed = JSON.parse(newRule.condition_json);
       await api("/escalations/rules", {
         method: "POST",
         body: JSON.stringify({
           dashboard_id: selectedDashboard,
-          entity_type: template.entity,
-          rule_name: newRule.rule_name || template.label,
-          condition_json,
+          entity_type: newRule.entity_type,
+          rule_name: newRule.rule_name,
+          condition_json: parsed,
           is_active: newRule.is_active
         })
       });
       const updated = await api(`/escalations/rules?dashboard_id=${selectedDashboard}`);
       setRules(updated);
-      setNewRule({ rule_name: "", template: ruleTemplates[0].type, days: "20", is_active: true });
+      setNewRule({ rule_name: "", entity_type: "Task", condition_json: '{"type":"task_aging_gt","days":20,"notify":"manager"}', is_active: true });
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Invalid JSON");
     }
   }
 
@@ -88,19 +77,27 @@ export default function EscalationRulesPage() {
 
       <div className="grid two" style={{ marginBottom: 24 }}>
         <div className="card">
-          <h3>Create Rule</h3>
+          <h3>Create Rule (Advanced)</h3>
           <div className="form-row">
-            <select className="select" value={newRule.template} onChange={(e) => setNewRule({ ...newRule, template: e.target.value })}>
-              {ruleTemplates.map((t) => (
-                <option key={t.type} value={t.type}>{t.label}</option>
-              ))}
-            </select>
             <input className="input" placeholder="Rule name" value={newRule.rule_name} onChange={(e) => setNewRule({ ...newRule, rule_name: e.target.value })} />
-            {(newRule.template === "task_aging_gt" || newRule.template === "decision_overdue_gt") && (
-              <input className="input" placeholder="Days" value={newRule.days} onChange={(e) => setNewRule({ ...newRule, days: e.target.value })} />
-            )}
+            <select className="select" value={newRule.entity_type} onChange={(e) => setNewRule({ ...newRule, entity_type: e.target.value })}>
+              <option value="Task">Task</option>
+              <option value="Risk">Risk</option>
+              <option value="Decision">Decision</option>
+            </select>
           </div>
-          <button className="button" onClick={createRule} disabled={!selectedDashboard}>Create Rule</button>
+          <textarea
+            className="input"
+            style={{ minHeight: 140, marginTop: 12 }}
+            value={newRule.condition_json}
+            onChange={(e) => setNewRule({ ...newRule, condition_json: e.target.value })}
+          />
+          <div className="inline-actions" style={{ marginTop: 12 }}>
+            <button className="button" onClick={createRule} disabled={!selectedDashboard}>Create Rule</button>
+          </div>
+          <div style={{ marginTop: 8, color: "#6b7280", fontSize: 12 }}>
+            Examples: {`{ "type": "task_aging_gt", "days": 20, "notify": "manager" }`} | {`{ "type": "critical_risk" }`} | {`{ "type": "decision_overdue_gt", "days": 5 }`}
+          </div>
         </div>
 
         <div className="card">

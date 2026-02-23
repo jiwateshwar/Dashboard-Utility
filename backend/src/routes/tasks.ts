@@ -11,7 +11,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
-  const { dashboard_id } = req.query as any;
+  const { dashboard_id, include_archived } = req.query as any;
   if (!dashboard_id) return res.status(400).json({ error: "dashboard_id required" });
   const userId = req.session.userId!;
   const canEdit = await canEditDashboard(userId, dashboard_id);
@@ -26,7 +26,7 @@ router.get("/", async (req, res) => {
      FROM tasks t
      JOIN users u ON u.id = t.owner_id
      WHERE t.dashboard_id = $1
-       AND t.is_archived = false
+       AND ($5::boolean IS TRUE OR t.is_archived = false)
        AND (
          t.publish_flag = true OR
          t.owner_id = $2 OR
@@ -35,7 +35,7 @@ router.get("/", async (req, res) => {
          t.created_by = ANY($3) OR
          $4
        )`,
-    [dashboard_id, userId, subordinates, owner]
+    [dashboard_id, userId, subordinates, owner, include_archived === "true"]
   );
 
   res.json(rows.map((r) => ({ ...r, aging_days: r.aging_days_calc })));
