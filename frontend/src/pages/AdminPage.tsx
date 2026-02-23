@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [newAccount, setNewAccount] = useState({ account_name: "", account_type: "", region: "" });
   const [newCategory, setNewCategory] = useState({ name: "" });
   const [accessGrant, setAccessGrant] = useState({ dashboard_id: "", target_user_id: "", can_view: true, can_edit: false });
+  const [accessList, setAccessList] = useState<any[]>([]);
 
   async function loadAll() {
     setError(null);
@@ -63,6 +64,16 @@ export default function AdminPage() {
       .then(setCategories)
       .catch(() => setCategories([]));
   }, [categoryDashboard]);
+
+  useEffect(() => {
+    if (!accessGrant.dashboard_id) {
+      setAccessList([]);
+      return;
+    }
+    api(`/dashboards/${accessGrant.dashboard_id}/access`)
+      .then(setAccessList)
+      .catch(() => setAccessList([]));
+  }, [accessGrant.dashboard_id]);
 
   const dashboardOptions = useMemo(() => dashboards, [dashboards]);
 
@@ -172,6 +183,34 @@ export default function AdminPage() {
     } catch (err: any) {
       setError(err.message);
     }
+  }
+
+  async function toggleAccount(account: any) {
+    await api(`/accounts/${account.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        dashboard_id: accountDashboard || null,
+        is_active: !account.is_active
+      })
+    });
+    const a = await api("/accounts");
+    setAccounts(a);
+  }
+
+  async function toggleCategory(category: any) {
+    if (!categoryDashboard) {
+      setError("Select a dashboard to manage categories");
+      return;
+    }
+    await api(`/categories/${category.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        dashboard_id: categoryDashboard,
+        is_active: !category.is_active
+      })
+    });
+    const c = await api(`/categories?dashboard_id=${categoryDashboard}`);
+    setCategories(c);
   }
 
   async function handleGrantAccess() {
@@ -297,7 +336,7 @@ export default function AdminPage() {
           <button className="button" onClick={handleCreateAccount}>Create Account</button>
           <table className="table" style={{ marginTop: 12 }}>
             <thead>
-              <tr><th>Name</th><th>Type</th><th>Region</th></tr>
+              <tr><th>Name</th><th>Type</th><th>Region</th><th>Status</th><th>Action</th></tr>
             </thead>
             <tbody>
               {accounts.map((a) => (
@@ -305,6 +344,8 @@ export default function AdminPage() {
                   <td>{a.account_name}</td>
                   <td>{a.account_type || "-"}</td>
                   <td>{a.region || "-"}</td>
+                  <td><span className="badge">{a.is_active ? "Active" : "Inactive"}</span></td>
+                  <td><button className="button" onClick={() => toggleAccount(a)}>{a.is_active ? "Deactivate" : "Activate"}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -325,13 +366,14 @@ export default function AdminPage() {
           <button className="button" onClick={handleCreateCategory}>Create Category</button>
           <table className="table" style={{ marginTop: 12 }}>
             <thead>
-              <tr><th>Name</th><th>Status</th></tr>
+              <tr><th>Name</th><th>Status</th><th>Action</th></tr>
             </thead>
             <tbody>
               {categories.map((c) => (
                 <tr key={c.id}>
                   <td>{c.name}</td>
                   <td><span className="badge">{c.is_active ? "Active" : "Inactive"}</span></td>
+                  <td><button className="button" onClick={() => toggleCategory(c)}>{c.is_active ? "Deactivate" : "Activate"}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -364,6 +406,21 @@ export default function AdminPage() {
           </select>
         </div>
         <button className="button" onClick={handleGrantAccess}>Grant Access</button>
+        <table className="table" style={{ marginTop: 12 }}>
+          <thead>
+            <tr><th>User</th><th>Email</th><th>View</th><th>Edit</th></tr>
+          </thead>
+          <tbody>
+            {accessList.map((a) => (
+              <tr key={a.user_id}>
+                <td>{a.name}</td>
+                <td>{a.email}</td>
+                <td>{a.can_view ? "Yes" : "No"}</td>
+                <td>{a.can_edit ? "Yes" : "No"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

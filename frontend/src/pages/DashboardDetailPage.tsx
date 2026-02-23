@@ -373,7 +373,7 @@ export default function DashboardDetailPage() {
           <h3>Tasks</h3>
           <table className="table">
             <thead>
-              <tr><th>Task</th><th>Owner</th><th>Target</th><th>SLA</th><th>Publish</th><th>Status</th><th>RAG</th><th>Actions</th></tr>
+              <tr><th>Task</th><th>Category</th><th>Account</th><th>Owner</th><th>Target</th><th>SLA</th><th>Publish</th><th>Status</th><th>RAG</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {tasks.map((t) => (
@@ -384,6 +384,30 @@ export default function DashboardDetailPage() {
                       value={taskEdits[t.id]?.item_details ?? t.item_details}
                       onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], item_details: e.target.value } }))}
                     />
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={taskEdits[t.id]?.category_id ?? t.category_id}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], category_id: e.target.value } }))}
+                    >
+                      <option value="">Category</option>
+                      {categoryOptions.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={taskEdits[t.id]?.account_id ?? t.account_id}
+                      onChange={(e) => setTaskEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], account_id: e.target.value } }))}
+                    >
+                      <option value="">Account</option>
+                      {accountOptions.map((a) => (
+                        <option key={a.id} value={a.id}>{a.account_name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     <select
@@ -456,7 +480,7 @@ export default function DashboardDetailPage() {
           <h3>Risks</h3>
           <table className="table">
             <thead>
-              <tr><th>Risk</th><th>Owner</th><th>Impact</th><th>Prob.</th><th>Mitigation</th><th>Target</th><th>Publish</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Prob.</th><th>Mitigation</th><th>Target</th><th>Publish</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {risks.map((r) => (
@@ -473,6 +497,18 @@ export default function DashboardDetailPage() {
                       onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], risk_description: e.target.value } }))}
                       style={{ marginTop: 6 }}
                     />
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={riskEdits[r.id]?.account_id ?? r.account_id}
+                      onChange={(e) => setRiskEdits((prev) => ({ ...prev, [r.id]: { ...prev[r.id], account_id: e.target.value } }))}
+                    >
+                      <option value="">Account</option>
+                      {accountOptions.map((a) => (
+                        <option key={a.id} value={a.id}>{a.account_name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     <select
@@ -554,7 +590,7 @@ export default function DashboardDetailPage() {
           <h3>Decisions</h3>
           <table className="table">
             <thead>
-              <tr><th>Decision</th><th>Owner</th><th>Deadline</th><th>Publish</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Publish</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {decisions.map((d) => (
@@ -571,6 +607,18 @@ export default function DashboardDetailPage() {
                       onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], decision_context: e.target.value } }))}
                       style={{ marginTop: 6 }}
                     />
+                  </td>
+                  <td>
+                    <select
+                      className="select"
+                      value={decisionEdits[d.id]?.account_id ?? d.account_id}
+                      onChange={(e) => setDecisionEdits((prev) => ({ ...prev, [d.id]: { ...prev[d.id], account_id: e.target.value } }))}
+                    >
+                      <option value="">Account</option>
+                      {accountOptions.map((a) => (
+                        <option key={a.id} value={a.id}>{a.account_name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td>
                     <select
