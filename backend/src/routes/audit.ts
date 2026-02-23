@@ -1,12 +1,20 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
+import { getUserRole, isDashboardOwner } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const { entity_type, entity_id, dashboard_id } = req.query as any;
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+  if (role !== "Admin") {
+    if (!dashboard_id) return res.status(403).json({ error: "Dashboard scope required" });
+    const owner = await isDashboardOwner(userId, dashboard_id);
+    if (!owner) return res.status(403).json({ error: "Owners only" });
+  }
 
   const { rows } = await query(
     `SELECT a.*
