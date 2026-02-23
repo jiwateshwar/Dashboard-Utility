@@ -9,7 +9,7 @@ router.post("/login", async (req, res) => {
   if (!email) {
     return res.status(400).json({ error: "Email is required" });
   }
-  const { rows } = await query<{ id: string; is_active: boolean }>(
+  const { rows } = await query(
     `SELECT id, is_active FROM users WHERE email = $1`,
     [email]
   );

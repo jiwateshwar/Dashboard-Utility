@@ -28,7 +28,7 @@ router.post("/", async (req, res) => {
   const id = uuid();
   let finalLevel = level;
   if (manager_id) {
-    const manager = await query<{ level: number }>(`SELECT level FROM users WHERE id = $1`, [manager_id]);
+    const manager = await query(`SELECT level FROM users WHERE id = $1`, [manager_id]);
     const managerLevel = manager.rows[0]?.level;
     if (!managerLevel) return res.status(400).json({ error: "Manager not found" });
     if (managerLevel >= 5) return res.status(400).json({ error: "Manager already at max level" });
@@ -60,7 +60,7 @@ router.patch("/:id", async (req, res) => {
     return res.status(400).json({ error: "Hierarchy loop detected" });
   }
   if (manager_id) {
-    const manager = await query<{ level: number }>(`SELECT level FROM users WHERE id = $1`, [manager_id]);
+    const manager = await query(`SELECT level FROM users WHERE id = $1`, [manager_id]);
     const managerLevel = manager.rows[0]?.level;
     if (!managerLevel) return res.status(400).json({ error: "Manager not found" });
     if (managerLevel >= 5) return res.status(400).json({ error: "Manager already at max level" });

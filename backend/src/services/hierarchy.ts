@@ -1,7 +1,7 @@
 import { query } from "../db.js";
 
 export async function getSubordinateIds(managerId: string) {
-  const { rows } = await query<{ id: string }>(
+  const { rows } = await query(
     `WITH RECURSIVE subordinates AS (
       SELECT id FROM users WHERE manager_id = $1 AND is_active = true
       UNION ALL

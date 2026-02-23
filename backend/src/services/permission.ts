@@ -1,7 +1,7 @@
 import { query } from "../db.js";
 
 export async function getUserRole(userId: string) {
-  const { rows } = await query<{ role: "Admin" | "User" }>(
+  const { rows } = await query(
     `SELECT role FROM users WHERE id = $1`,
     [userId]
   );

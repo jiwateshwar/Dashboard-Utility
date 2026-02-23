@@ -12,7 +12,7 @@ async function runPublishingCycle() {
   const isLastDay = today.date() === today.daysInMonth();
   if (!is15th && !isLastDay) return;
 
-  const dashboards = await query<{ id: string }>(`SELECT id FROM dashboards WHERE is_active = true`);
+  const dashboards = await query(`SELECT id FROM dashboards WHERE is_active = true`);
   for (const dash of dashboards.rows) {
     const content = await buildSnapshotContent(dash.id);
     await query(

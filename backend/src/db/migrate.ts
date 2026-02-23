@@ -16,7 +16,7 @@ async function run() {
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (filename text primary key, applied_at timestamptz not null default now())`);
 
   for (const file of files) {
-    const { rows } = await pool.query<{ filename: string }>(
+    const { rows } = await pool.query(
       `SELECT filename FROM schema_migrations WHERE filename = $1`,
       [file]
     );

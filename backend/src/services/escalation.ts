@@ -18,7 +18,7 @@ async function notify(userId: string, dashboardId: string, entityType: string, e
 
 export async function runEscalations() {
   // Default rules when no custom rules are configured.
-  const dashboards = await query<{ id: string; primary_owner_id: string }>(
+  const dashboards = await query(
     `SELECT id, primary_owner_id FROM dashboards WHERE is_active = true`
   );
 
@@ -33,7 +33,7 @@ export async function runEscalations() {
     for (const task of tasks.rows) {
       const ageDays = dayjs().diff(dayjs(task.created_at), "day");
       if (ageDays > 20) {
-        const manager = await query<{ manager_id: string }>(
+        const manager = await query(
           `SELECT manager_id FROM users WHERE id = $1`,
           [task.owner_id]
         );
