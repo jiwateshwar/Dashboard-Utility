@@ -38,6 +38,12 @@ export default function PersonalPage() {
             <div key={e.id}>{e.message}</div>
           ))}
         </div>
+        <div className="card">
+          <h3>My Pending Approvals</h3>
+          {data.pendingApprovals.map((t: any) => (
+            <div key={t.id}>{t.item_details}</div>
+          ))}
+        </div>
       </div>
     </div>
   );

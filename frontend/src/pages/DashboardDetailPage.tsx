@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 
@@ -8,20 +8,165 @@ export default function DashboardDetailPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [risks, setRisks] = useState<any[]>([]);
   const [decisions, setDecisions] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const [newTask, setNewTask] = useState({
+    category_id: "",
+    account_id: "",
+    item_details: "",
+    owner_id: "",
+    target_date: "",
+    sla_days: "",
+    rag_status: "Green",
+    publish_flag: false
+  });
+
+  const [newRisk, setNewRisk] = useState({
+    account_id: "",
+    risk_title: "",
+    risk_description: "",
+    risk_owner: "",
+    impact_level: "Medium",
+    probability: "Medium",
+    mitigation_plan: "",
+    target_mitigation_date: "",
+    publish_flag: false
+  });
+
+  const [newDecision, setNewDecision] = useState({
+    account_id: "",
+    decision_title: "",
+    decision_context: "",
+    decision_owner: "",
+    decision_deadline: "",
+    impact_area: "",
+    publish_flag: false
+  });
 
   useEffect(() => {
     if (!id) return;
-    api(`/dashboards/${id}/summary`).then(setSummary);
-    api(`/tasks?dashboard_id=${id}`).then(setTasks);
-    api(`/risks?dashboard_id=${id}`).then(setRisks);
-    api(`/decisions?dashboard_id=${id}`).then(setDecisions);
+    Promise.all([
+      api(`/dashboards/${id}/summary`),
+      api(`/tasks?dashboard_id=${id}`),
+      api(`/risks?dashboard_id=${id}`),
+      api(`/decisions?dashboard_id=${id}`),
+      api(`/accounts`),
+      api(`/categories?dashboard_id=${id}`),
+      api(`/users`)
+    ])
+      .then(([s, t, r, d, a, c, u]) => {
+        setSummary(s);
+        setTasks(t);
+        setRisks(r);
+        setDecisions(d);
+        setAccounts(a);
+        setCategories(c);
+        setUsers(u);
+      })
+      .catch((err: any) => setError(err.message || "Failed to load"));
   }, [id]);
+
+  const accountOptions = useMemo(() => accounts.filter((a) => a.is_active !== false), [accounts]);
+  const categoryOptions = useMemo(() => categories.filter((c) => c.is_active !== false), [categories]);
+
+  async function refresh() {
+    if (!id) return;
+    const [t, r, d, s] = await Promise.all([
+      api(`/tasks?dashboard_id=${id}`),
+      api(`/risks?dashboard_id=${id}`),
+      api(`/decisions?dashboard_id=${id}`),
+      api(`/dashboards/${id}/summary`)
+    ]);
+    setTasks(t);
+    setRisks(r);
+    setDecisions(d);
+    setSummary(s);
+  }
+
+  async function createTask() {
+    if (!id) return;
+    setError(null);
+    try {
+      await api(`/tasks`, {
+        method: "POST",
+        body: JSON.stringify({
+          dashboard_id: id,
+          category_id: newTask.category_id,
+          account_id: newTask.account_id,
+          item_details: newTask.item_details,
+          owner_id: newTask.owner_id,
+          target_date: newTask.target_date,
+          sla_days: newTask.sla_days ? Number(newTask.sla_days) : undefined,
+          rag_status: newTask.rag_status,
+          publish_flag: newTask.publish_flag
+        })
+      });
+      setNewTask({ category_id: "", account_id: "", item_details: "", owner_id: "", target_date: "", sla_days: "", rag_status: "Green", publish_flag: false });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function createRisk() {
+    if (!id) return;
+    setError(null);
+    try {
+      await api(`/risks`, {
+        method: "POST",
+        body: JSON.stringify({
+          dashboard_id: id,
+          account_id: newRisk.account_id,
+          risk_title: newRisk.risk_title,
+          risk_description: newRisk.risk_description,
+          risk_owner: newRisk.risk_owner,
+          impact_level: newRisk.impact_level,
+          probability: newRisk.probability,
+          mitigation_plan: newRisk.mitigation_plan,
+          target_mitigation_date: newRisk.target_mitigation_date || null,
+          publish_flag: newRisk.publish_flag
+        })
+      });
+      setNewRisk({ account_id: "", risk_title: "", risk_description: "", risk_owner: "", impact_level: "Medium", probability: "Medium", mitigation_plan: "", target_mitigation_date: "", publish_flag: false });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function createDecision() {
+    if (!id) return;
+    setError(null);
+    try {
+      await api(`/decisions`, {
+        method: "POST",
+        body: JSON.stringify({
+          dashboard_id: id,
+          account_id: newDecision.account_id,
+          decision_title: newDecision.decision_title,
+          decision_context: newDecision.decision_context,
+          decision_owner: newDecision.decision_owner,
+          decision_deadline: newDecision.decision_deadline,
+          impact_area: newDecision.impact_area,
+          publish_flag: newDecision.publish_flag
+        })
+      });
+      setNewDecision({ account_id: "", decision_title: "", decision_context: "", decision_owner: "", decision_deadline: "", impact_area: "", publish_flag: false });
+      await refresh();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
 
   if (!id) return null;
 
   return (
     <div>
       <h1>Dashboard Overview</h1>
+      {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
       {summary && (
         <div className="grid three" style={{ marginBottom: 24 }}>
           <div className="card">
@@ -45,33 +190,169 @@ export default function DashboardDetailPage() {
         </div>
       )}
 
+      <div className="grid two" style={{ marginBottom: 24 }}>
+        <div className="card">
+          <h3>Create Task</h3>
+          <div className="form-row">
+            <select className="select" value={newTask.category_id} onChange={(e) => setNewTask({ ...newTask, category_id: e.target.value })}>
+              <option value="">Category</option>
+              {categoryOptions.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select className="select" value={newTask.account_id} onChange={(e) => setNewTask({ ...newTask, account_id: e.target.value })}>
+              <option value="">Account</option>
+              {accountOptions.map((a) => (
+                <option key={a.id} value={a.id}>{a.account_name}</option>
+              ))}
+            </select>
+            <select className="select" value={newTask.owner_id} onChange={(e) => setNewTask({ ...newTask, owner_id: e.target.value })}>
+              <option value="">Owner</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <input className="input" placeholder="Target date" type="date" value={newTask.target_date} onChange={(e) => setNewTask({ ...newTask, target_date: e.target.value })} />
+            <input className="input" placeholder="SLA days" value={newTask.sla_days} onChange={(e) => setNewTask({ ...newTask, sla_days: e.target.value })} />
+            <select className="select" value={newTask.rag_status} onChange={(e) => setNewTask({ ...newTask, rag_status: e.target.value })}>
+              <option value="Green">Green</option>
+              <option value="Amber">Amber</option>
+              <option value="Red">Red</option>
+            </select>
+          </div>
+          <input className="input" placeholder="Task details" value={newTask.item_details} onChange={(e) => setNewTask({ ...newTask, item_details: e.target.value })} />
+          <div className="inline-actions" style={{ marginTop: 12 }}>
+            <label className="badge">
+              <input type="checkbox" checked={newTask.publish_flag} onChange={(e) => setNewTask({ ...newTask, publish_flag: e.target.checked })} /> Publish
+            </label>
+            <button className="button" onClick={createTask}>Create Task</button>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>Create Risk</h3>
+          <div className="form-row">
+            <select className="select" value={newRisk.account_id} onChange={(e) => setNewRisk({ ...newRisk, account_id: e.target.value })}>
+              <option value="">Account</option>
+              {accountOptions.map((a) => (
+                <option key={a.id} value={a.id}>{a.account_name}</option>
+              ))}
+            </select>
+            <select className="select" value={newRisk.risk_owner} onChange={(e) => setNewRisk({ ...newRisk, risk_owner: e.target.value })}>
+              <option value="">Owner</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <select className="select" value={newRisk.impact_level} onChange={(e) => setNewRisk({ ...newRisk, impact_level: e.target.value })}>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+              <option value="Critical">Critical</option>
+            </select>
+            <select className="select" value={newRisk.probability} onChange={(e) => setNewRisk({ ...newRisk, probability: e.target.value })}>
+              <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
+              <option value="High">High</option>
+            </select>
+            <input className="input" type="date" placeholder="Mitigation date" value={newRisk.target_mitigation_date} onChange={(e) => setNewRisk({ ...newRisk, target_mitigation_date: e.target.value })} />
+          </div>
+          <input className="input" placeholder="Risk title" value={newRisk.risk_title} onChange={(e) => setNewRisk({ ...newRisk, risk_title: e.target.value })} />
+          <input className="input" placeholder="Risk description" value={newRisk.risk_description} onChange={(e) => setNewRisk({ ...newRisk, risk_description: e.target.value })} style={{ marginTop: 8 }} />
+          <input className="input" placeholder="Mitigation plan" value={newRisk.mitigation_plan} onChange={(e) => setNewRisk({ ...newRisk, mitigation_plan: e.target.value })} style={{ marginTop: 8 }} />
+          <div className="inline-actions" style={{ marginTop: 12 }}>
+            <label className="badge">
+              <input type="checkbox" checked={newRisk.publish_flag} onChange={(e) => setNewRisk({ ...newRisk, publish_flag: e.target.checked })} /> Publish
+            </label>
+            <button className="button" onClick={createRisk}>Create Risk</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid two" style={{ marginBottom: 24 }}>
+        <div className="card">
+          <h3>Create Decision</h3>
+          <div className="form-row">
+            <select className="select" value={newDecision.account_id} onChange={(e) => setNewDecision({ ...newDecision, account_id: e.target.value })}>
+              <option value="">Account</option>
+              {accountOptions.map((a) => (
+                <option key={a.id} value={a.id}>{a.account_name}</option>
+              ))}
+            </select>
+            <select className="select" value={newDecision.decision_owner} onChange={(e) => setNewDecision({ ...newDecision, decision_owner: e.target.value })}>
+              <option value="">Owner</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <input className="input" type="date" placeholder="Deadline" value={newDecision.decision_deadline} onChange={(e) => setNewDecision({ ...newDecision, decision_deadline: e.target.value })} />
+            <input className="input" placeholder="Impact area" value={newDecision.impact_area} onChange={(e) => setNewDecision({ ...newDecision, impact_area: e.target.value })} />
+          </div>
+          <input className="input" placeholder="Decision title" value={newDecision.decision_title} onChange={(e) => setNewDecision({ ...newDecision, decision_title: e.target.value })} />
+          <input className="input" placeholder="Decision context" value={newDecision.decision_context} onChange={(e) => setNewDecision({ ...newDecision, decision_context: e.target.value })} style={{ marginTop: 8 }} />
+          <div className="inline-actions" style={{ marginTop: 12 }}>
+            <label className="badge">
+              <input type="checkbox" checked={newDecision.publish_flag} onChange={(e) => setNewDecision({ ...newDecision, publish_flag: e.target.checked })} /> Publish
+            </label>
+            <button className="button" onClick={createDecision}>Create Decision</button>
+          </div>
+        </div>
+      </div>
+
       <div className="grid two">
         <div className="card">
           <h3>Tasks</h3>
-          {tasks.slice(0, 6).map((t) => (
-            <div key={t.id} style={{ marginBottom: 8 }}>
-              <strong>{t.item_details}</strong>
-              <div style={{ color: "#9aa5b1" }}>{t.status}</div>
-            </div>
-          ))}
+          <table className="table">
+            <thead>
+              <tr><th>Task</th><th>Status</th><th>Owner</th><th>RAG</th></tr>
+            </thead>
+            <tbody>
+              {tasks.map((t) => (
+                <tr key={t.id}>
+                  <td>{t.item_details}</td>
+                  <td>{t.status}</td>
+                  <td>{t.owner_name}</td>
+                  <td><span className={`tag ${t.rag_status?.toLowerCase()}`}>{t.rag_status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div className="card">
           <h3>Risks</h3>
-          {risks.slice(0, 6).map((r) => (
-            <div key={r.id} style={{ marginBottom: 8 }}>
-              <strong>{r.risk_title}</strong>
-              <div style={{ color: "#9aa5b1" }}>{r.impact_level} / {r.probability}</div>
-            </div>
-          ))}
+          <table className="table">
+            <thead>
+              <tr><th>Risk</th><th>Impact</th><th>Owner</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {risks.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.risk_title}</td>
+                  <td>{r.impact_level}/{r.probability}</td>
+                  <td>{r.owner_name}</td>
+                  <td>{r.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div className="card">
           <h3>Decisions</h3>
-          {decisions.slice(0, 6).map((d) => (
-            <div key={d.id} style={{ marginBottom: 8 }}>
-              <strong>{d.decision_title}</strong>
-              <div style={{ color: "#9aa5b1" }}>{d.status}</div>
-            </div>
-          ))}
+          <table className="table">
+            <thead>
+              <tr><th>Decision</th><th>Owner</th><th>Status</th><th>Deadline</th></tr>
+            </thead>
+            <tbody>
+              {decisions.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.decision_title}</td>
+                  <td>{d.owner_name}</td>
+                  <td>{d.status}</td>
+                  <td>{d.decision_deadline}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

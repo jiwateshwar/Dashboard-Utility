@@ -21,6 +21,9 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/search">
         Search
       </NavLink>
+      <NavLink className="nav-item" to="/manage">
+        Admin & Owners
+      </NavLink>
       <NavLink className="nav-item" to="/notifications">
         Escalations
       </NavLink>
