@@ -1,0 +1,32 @@
+import { Router } from "express";
+import authRouter from "./auth.js";
+import usersRouter from "./users.js";
+import dashboardsRouter from "./dashboards.js";
+import accountsRouter from "./accounts.js";
+import categoriesRouter from "./categories.js";
+import tasksRouter from "./tasks.js";
+import risksRouter from "./risks.js";
+import decisionsRouter from "./decisions.js";
+import searchRouter from "./search.js";
+import snapshotsRouter from "./snapshots.js";
+import personalRouter from "./personal.js";
+import teamRouter from "./team.js";
+import notificationsRouter from "./notifications.js";
+import groupsRouter from "./groups.js";
+
+export const router = Router();
+
+router.use("/auth", authRouter);
+router.use("/users", usersRouter);
+router.use("/dashboards", dashboardsRouter);
+router.use("/accounts", accountsRouter);
+router.use("/categories", categoriesRouter);
+router.use("/tasks", tasksRouter);
+router.use("/risks", risksRouter);
+router.use("/decisions", decisionsRouter);
+router.use("/search", searchRouter);
+router.use("/snapshots", snapshotsRouter);
+router.use("/personal", personalRouter);
+router.use("/team", teamRouter);
+router.use("/notifications", notificationsRouter);
+router.use("/groups", groupsRouter);

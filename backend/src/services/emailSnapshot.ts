@@ -8,8 +8,12 @@ type SnapshotContent = {
     generatedAt: string;
   };
   tasks: any[];
+  openTasks?: any[];
   risks: any[];
   decisions: any[];
+  closedTasks?: any[];
+  closedRisks?: any[];
+  closedDecisions?: any[];
 };
 
 function table(rows: any[], columns: { key: string; label: string }[]) {
@@ -26,7 +30,7 @@ function table(rows: any[], columns: { key: string; label: string }[]) {
 
 export function buildEml(params: { dashboardName: string; date: string; content: SnapshotContent }) {
   const { dashboardName, date, content } = params;
-  const subject = `[PRISM] ${dashboardName}  Snapshot  ${date}`;
+  const subject = `[PRISM] ${dashboardName} - Snapshot - ${date}`;
 
   const html = `
   <html>
@@ -40,7 +44,7 @@ export function buildEml(params: { dashboardName: string; date: string; content:
         <li>Decisions: ${content.summary.decisions.total} (Pending ${content.summary.decisions.pending})</li>
       </ul>
       <h3>Open Tasks</h3>
-      ${table(content.tasks, [
+      ${table(content.openTasks || content.tasks, [
         { key: "item_details", label: "Task" },
         { key: "status", label: "Status" },
         { key: "rag_status", label: "RAG" },
@@ -60,6 +64,25 @@ export function buildEml(params: { dashboardName: string; date: string; content:
         { key: "decision_title", label: "Decision" },
         { key: "status", label: "Status" },
         { key: "decision_deadline", label: "Deadline" },
+        { key: "owner_name", label: "Owner" }
+      ])}
+      <h3>Closed (Last 45 Days)</h3>
+      <h4>Tasks</h4>
+      ${table(content.closedTasks || [], [
+        { key: "item_details", label: "Task" },
+        { key: "closure_approved_at", label: "Closed Date" },
+        { key: "owner_name", label: "Owner" }
+      ])}
+      <h4>Risks</h4>
+      ${table(content.closedRisks || [], [
+        { key: "risk_title", label: "Risk" },
+        { key: "closed_at", label: "Closed Date" },
+        { key: "owner_name", label: "Owner" }
+      ])}
+      <h4>Decisions</h4>
+      ${table(content.closedDecisions || [], [
+        { key: "decision_title", label: "Decision" },
+        { key: "decision_date", label: "Approved Date" },
         { key: "owner_name", label: "Owner" }
       ])}
     </body>
