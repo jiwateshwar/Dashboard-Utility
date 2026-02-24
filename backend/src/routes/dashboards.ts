@@ -11,14 +11,16 @@ router.use(requireAuth);
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;
   const { rows } = await query(
-    `SELECT DISTINCT d.*,
-       (SELECT json_agg(json_build_object('user_id', dbo.user_id, 'name', u.name) ORDER BY u.name)
-        FROM dashboard_owners dbo JOIN users u ON u.id = dbo.user_id
-        WHERE dbo.dashboard_id = d.id) as owners
+    `SELECT d.*,
+       (SELECT json_agg(json_build_object('user_id', dbo2.user_id, 'name', u.name) ORDER BY u.name)
+        FROM dashboard_owners dbo2 JOIN users u ON u.id = dbo2.user_id
+        WHERE dbo2.dashboard_id = d.id) as owners
      FROM dashboards d
-     LEFT JOIN dashboard_owners dbo ON dbo.dashboard_id = d.id
-     LEFT JOIN dashboard_access da ON da.dashboard_id = d.id
-     WHERE dbo.user_id = $1 OR da.user_id = $1`,
+     WHERE d.id IN (
+       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $1
+       UNION
+       SELECT dashboard_id FROM dashboard_access WHERE user_id = $1
+     )`,
     [userId]
   );
   res.json(rows);
@@ -52,10 +54,12 @@ router.get("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
   const { rows } = await query(
-    `SELECT DISTINCT d.* FROM dashboards d
-     LEFT JOIN dashboard_owners dbo ON dbo.dashboard_id = d.id
-     LEFT JOIN dashboard_access da ON da.dashboard_id = d.id
-     WHERE d.id = $1 AND (dbo.user_id = $2 OR da.user_id = $2)`,
+    `SELECT d.* FROM dashboards d
+     WHERE d.id = $1 AND d.id IN (
+       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $2
+       UNION
+       SELECT dashboard_id FROM dashboard_access WHERE user_id = $2
+     )`,
     [id, userId]
   );
   if (!rows[0]) return res.status(404).json({ error: "Not found" });
