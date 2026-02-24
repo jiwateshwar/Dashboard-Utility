@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getSubordinateIds } from "../services/hierarchy.js";
-import { hasDashboardAccess, isDashboardOwner, canEditDashboard } from "../services/permission.js";
+import { getUserRole, hasDashboardAccess, isDashboardOwner, canEditDashboard } from "../services/permission.js";
 import { logAudit } from "../services/auditing.js";
 
 const router = Router();
@@ -138,6 +138,19 @@ router.patch("/:id", async (req, res) => {
 
   await logAudit({ entityType: "Risk", entityId: id, changedBy: userId, oldValue: risk.rows[0], newValue: req.body });
 
+  res.json({ ok: true });
+});
+
+router.delete("/:id", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  const risk = await query(`SELECT dashboard_id FROM risks WHERE id = $1`, [id]);
+  if (risk.rows.length === 0) return res.status(404).json({ error: "Not found" });
+  const dashboardId = risk.rows[0].dashboard_id as string;
+  const isOwner = await isDashboardOwner(userId, dashboardId);
+  const role = await getUserRole(userId);
+  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Only owners can delete risks" });
+  await query(`DELETE FROM risks WHERE id = $1`, [id]);
   res.json({ ok: true });
 });
 

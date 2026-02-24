@@ -10,7 +10,9 @@ export async function getUserRole(userId: string) {
 
 export async function isDashboardOwner(userId: string, dashboardId: string) {
   const { rows } = await query(
-    `SELECT 1 FROM dashboards WHERE id = $1 AND (primary_owner_id = $2 OR secondary_owner_id = $2)`,
+    `SELECT 1 FROM dashboard_owners WHERE dashboard_id = $1 AND user_id = $2
+     UNION
+     SELECT 1 FROM dashboards WHERE id = $1 AND (primary_owner_id = $2 OR secondary_owner_id = $2)`,
     [dashboardId, userId]
   );
   return rows.length > 0;

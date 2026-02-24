@@ -12,26 +12,9 @@ export default function AdminPage() {
   const [categoryDashboard, setCategoryDashboard] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  const [newUser, setNewUser] = useState({
-    name: "",
-    email: "",
-    manager_id: "",
-    level: "",
-    role: "User"
-  });
-
-  const [newDashboard, setNewDashboard] = useState({
-    name: "",
-    description: "",
-    primary_owner_id: "",
-    secondary_owner_id: ""
-  });
-
-  const [editingDashboard, setEditingDashboard] = useState<{
-    id: string; name: string; description: string;
-    primary_owner_id: string; secondary_owner_id: string;
-  } | null>(null);
-
+  const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", level: "", role: "User" });
+  const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[] });
+  const [editingDashboard, setEditingDashboard] = useState<{ id: string; name: string; description: string; ownerIds: string[] } | null>(null);
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
   const [groupAssign, setGroupAssign] = useState({ dashboard_id: "", group_id: "" });
   const [newAccount, setNewAccount] = useState({ account_name: "", account_type: "", region: "" });
@@ -42,212 +25,162 @@ export default function AdminPage() {
   async function loadAll() {
     setError(null);
     try {
-      const results = await Promise.allSettled([
-        api("/users"),
-        api("/dashboards"),
-        api("/groups"),
-        api("/accounts")
-      ]);
+      const results = await Promise.allSettled([api("/users"), api("/dashboards"), api("/groups"), api("/accounts")]);
       if (results[0].status === "fulfilled") setUsers(results[0].value as any[]);
       if (results[1].status === "fulfilled") setDashboards(results[1].value as any[]);
       if (results[2].status === "fulfilled") setGroups(results[2].value as any[]);
       if (results[3].status === "fulfilled") setAccounts(results[3].value as any[]);
-    } catch (err: any) {
-      setError(err.message || "Failed to load data");
-    }
+    } catch (err: any) { setError(err.message || "Failed to load data"); }
   }
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   useEffect(() => {
-    if (!categoryDashboard) {
-      setCategories([]);
-      return;
-    }
-    api(`/categories?dashboard_id=${categoryDashboard}`)
-      .then(setCategories)
-      .catch(() => setCategories([]));
+    if (!categoryDashboard) { setCategories([]); return; }
+    api(`/categories?dashboard_id=${categoryDashboard}`).then(setCategories).catch(() => setCategories([]));
   }, [categoryDashboard]);
 
   useEffect(() => {
-    if (!accessGrant.dashboard_id) {
-      setAccessList([]);
-      return;
-    }
-    api(`/dashboards/${accessGrant.dashboard_id}/access`)
-      .then(setAccessList)
-      .catch(() => setAccessList([]));
+    if (!accessGrant.dashboard_id) { setAccessList([]); return; }
+    api(`/dashboards/${accessGrant.dashboard_id}/access`).then(setAccessList).catch(() => setAccessList([]));
   }, [accessGrant.dashboard_id]);
 
   const dashboardOptions = useMemo(() => dashboards, [dashboards]);
 
+  // ── Owner chip helpers ──────────────────────────────────────
+
+  function addOwnerToNew(uid: string) {
+    if (!uid || newDashboard.owner_ids.includes(uid)) return;
+    setNewDashboard({ ...newDashboard, owner_ids: [...newDashboard.owner_ids, uid] });
+  }
+  function removeOwnerFromNew(uid: string) {
+    setNewDashboard({ ...newDashboard, owner_ids: newDashboard.owner_ids.filter((id) => id !== uid) });
+  }
+  function addOwnerToEdit(uid: string) {
+    if (!editingDashboard || !uid || editingDashboard.ownerIds.includes(uid)) return;
+    setEditingDashboard({ ...editingDashboard, ownerIds: [...editingDashboard.ownerIds, uid] });
+  }
+  function removeOwnerFromEdit(uid: string) {
+    if (!editingDashboard) return;
+    setEditingDashboard({ ...editingDashboard, ownerIds: editingDashboard.ownerIds.filter((id) => id !== uid) });
+  }
+
+  function OwnerChips({ ownerIds, onRemove }: { ownerIds: string[]; onRemove: (uid: string) => void }) {
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 32, alignItems: "center" }}>
+        {ownerIds.length === 0 && <span style={{ fontSize: 12, color: "var(--muted)" }}>No owners added yet</span>}
+        {ownerIds.map((uid) => {
+          const u = users.find((x) => x.id === uid);
+          return (
+            <span key={uid} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#eef6ff", color: "#1d63ed", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 500 }}>
+              {u?.name ?? uid}
+              <button onClick={() => onRemove(uid)} style={{ background: "none", border: "none", cursor: "pointer", color: "#1d63ed", padding: 0, lineHeight: 1, fontSize: 14 }}>×</button>
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── Handlers ────────────────────────────────────────────────
+
   async function handleCreateUser() {
     setError(null);
     try {
-      await api("/users", {
-        method: "POST",
-        body: JSON.stringify({
-          name: newUser.name,
-          email: newUser.email,
-          manager_id: newUser.manager_id || null,
-          level: newUser.level ? Number(newUser.level) : undefined,
-          role: newUser.role
-        })
-      });
+      await api("/users", { method: "POST", body: JSON.stringify({ name: newUser.name, email: newUser.email, manager_id: newUser.manager_id || null, level: newUser.level ? Number(newUser.level) : undefined, role: newUser.role }) });
       setNewUser({ name: "", email: "", manager_id: "", level: "", role: "User" });
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   async function handleCreateDashboard() {
     setError(null);
+    if (newDashboard.owner_ids.length === 0) { setError("At least one owner is required"); return; }
     try {
-      await api("/dashboards", {
-        method: "POST",
-        body: JSON.stringify({
-          name: newDashboard.name,
-          description: newDashboard.description,
-          primary_owner_id: newDashboard.primary_owner_id,
-          secondary_owner_id: newDashboard.secondary_owner_id || null
-        })
-      });
-      setNewDashboard({ name: "", description: "", primary_owner_id: "", secondary_owner_id: "" });
+      await api("/dashboards", { method: "POST", body: JSON.stringify({ name: newDashboard.name, description: newDashboard.description, owner_ids: newDashboard.owner_ids }) });
+      setNewDashboard({ name: "", description: "", owner_ids: [] });
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   async function handleUpdateDashboard() {
     if (!editingDashboard) return;
     setError(null);
+    if (editingDashboard.ownerIds.length === 0) { setError("At least one owner is required"); return; }
     try {
-      await api(`/dashboards/${editingDashboard.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: editingDashboard.name,
-          description: editingDashboard.description,
-          primary_owner_id: editingDashboard.primary_owner_id || null,
-          secondary_owner_id: editingDashboard.secondary_owner_id || null
-        })
-      });
+      await api(`/dashboards/${editingDashboard.id}`, { method: "PATCH", body: JSON.stringify({ name: editingDashboard.name, description: editingDashboard.description }) });
+      await api(`/dashboards/${editingDashboard.id}/owners`, { method: "PUT", body: JSON.stringify({ owner_ids: editingDashboard.ownerIds }) });
       setEditingDashboard(null);
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   async function handleToggleDashboardActive(dashboard: any) {
     setError(null);
     try {
-      await api(`/dashboards/${dashboard.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ is_active: !dashboard.is_active })
-      });
+      await api(`/dashboards/${dashboard.id}`, { method: "PATCH", body: JSON.stringify({ is_active: !dashboard.is_active }) });
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: any) { setError(err.message); }
+  }
+
+  async function startEditDashboard(d: any) {
+    let ownerIds: string[] = [];
+    try {
+      const owners = await api(`/dashboards/${d.id}/owners`);
+      ownerIds = (owners as any[]).map((o: any) => o.user_id);
+    } catch {
+      ownerIds = d.primary_owner_id ? [d.primary_owner_id] : [];
     }
+    setEditingDashboard({ id: d.id, name: d.name, description: d.description || "", ownerIds });
   }
 
   async function handleCreateGroup() {
     setError(null);
     try {
-      await api("/groups", {
-        method: "POST",
-        body: JSON.stringify(newGroup)
-      });
+      await api("/groups", { method: "POST", body: JSON.stringify(newGroup) });
       setNewGroup({ name: "", description: "" });
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   async function handleAssignGroup() {
     setError(null);
     try {
-      await api("/groups/assign", {
-        method: "POST",
-        body: JSON.stringify(groupAssign)
-      });
+      await api("/groups/assign", { method: "POST", body: JSON.stringify(groupAssign) });
       setGroupAssign({ dashboard_id: "", group_id: "" });
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   async function handleCreateAccount() {
     setError(null);
     try {
-      await api("/accounts", {
-        method: "POST",
-        body: JSON.stringify({
-          ...newAccount,
-          dashboard_id: accountDashboard || null
-        })
-      });
+      await api("/accounts", { method: "POST", body: JSON.stringify({ ...newAccount, dashboard_id: accountDashboard || null }) });
       setNewAccount({ account_name: "", account_type: "", region: "" });
       const a = await api("/accounts");
       setAccounts(a);
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   async function handleCreateCategory() {
     setError(null);
+    if (!categoryDashboard) { setError("Select a dashboard for the category"); return; }
     try {
-      if (!categoryDashboard) {
-        setError("Select a dashboard for the category");
-        return;
-      }
-      await api("/categories", {
-        method: "POST",
-        body: JSON.stringify({
-          dashboard_id: categoryDashboard,
-          name: newCategory.name
-        })
-      });
+      await api("/categories", { method: "POST", body: JSON.stringify({ dashboard_id: categoryDashboard, name: newCategory.name }) });
       setNewCategory({ name: "" });
-      if (categoryDashboard) {
-        const c = await api(`/categories?dashboard_id=${categoryDashboard}`);
-        setCategories(c);
-      }
-    } catch (err: any) {
-      setError(err.message);
-    }
+      const c = await api(`/categories?dashboard_id=${categoryDashboard}`);
+      setCategories(c);
+    } catch (err: any) { setError(err.message); }
   }
 
   async function toggleAccount(account: any) {
-    await api(`/accounts/${account.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        dashboard_id: accountDashboard || null,
-        is_active: !account.is_active
-      })
-    });
+    await api(`/accounts/${account.id}`, { method: "PATCH", body: JSON.stringify({ dashboard_id: accountDashboard || null, is_active: !account.is_active }) });
     const a = await api("/accounts");
     setAccounts(a);
   }
 
   async function toggleCategory(category: any) {
-    if (!categoryDashboard) {
-      setError("Select a dashboard to manage categories");
-      return;
-    }
-    await api(`/categories/${category.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({
-        dashboard_id: categoryDashboard,
-        is_active: !category.is_active
-      })
-    });
+    if (!categoryDashboard) { setError("Select a dashboard to manage categories"); return; }
+    await api(`/categories/${category.id}`, { method: "PATCH", body: JSON.stringify({ dashboard_id: categoryDashboard, is_active: !category.is_active }) });
     const c = await api(`/categories?dashboard_id=${categoryDashboard}`);
     setCategories(c);
   }
@@ -255,18 +188,11 @@ export default function AdminPage() {
   async function handleGrantAccess() {
     setError(null);
     try {
-      await api(`/dashboards/${accessGrant.dashboard_id}/access`, {
-        method: "POST",
-        body: JSON.stringify(accessGrant)
-      });
-      // Keep the selected dashboard, just reset the user fields
+      await api(`/dashboards/${accessGrant.dashboard_id}/access`, { method: "POST", body: JSON.stringify(accessGrant) });
       setAccessGrant((prev) => ({ ...prev, target_user_id: "", can_view: true, can_edit: false }));
-      // Reload access list to show the newly granted entry
       const updated = await api(`/dashboards/${accessGrant.dashboard_id}/access`);
       setAccessList(updated);
-    } catch (err: any) {
-      setError(err.message);
-    }
+    } catch (err: any) { setError(err.message); }
   }
 
   return (
@@ -275,12 +201,9 @@ export default function AdminPage() {
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
 
       <div className="inline-actions" style={{ marginBottom: 16 }}>
-        <button className={`button ${tab === "users" ? "" : "secondary"}`} onClick={() => setTab("users")}>Users</button>
-        <button className={`button ${tab === "dashboards" ? "" : "secondary"}`} onClick={() => setTab("dashboards")}>Dashboards</button>
-        <button className={`button ${tab === "groups" ? "" : "secondary"}`} onClick={() => setTab("groups")}>Groups</button>
-        <button className={`button ${tab === "accounts" ? "" : "secondary"}`} onClick={() => setTab("accounts")}>Accounts</button>
-        <button className={`button ${tab === "categories" ? "" : "secondary"}`} onClick={() => setTab("categories")}>Categories</button>
-        <button className={`button ${tab === "access" ? "" : "secondary"}`} onClick={() => setTab("access")}>Access</button>
+        {(["users", "dashboards", "groups", "accounts", "categories", "access"] as const).map((t) => (
+          <button key={t} className={`button ${tab === t ? "" : "secondary"}`} onClick={() => setTab(t)} style={{ textTransform: "capitalize" }}>{t}</button>
+        ))}
       </div>
 
       {tab === "users" && (
@@ -291,14 +214,11 @@ export default function AdminPage() {
             <input className="input" placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
             <select className="select" value={newUser.manager_id} onChange={(e) => setNewUser({ ...newUser, manager_id: e.target.value })}>
               <option value="">No Manager</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
             <input className="input" placeholder="Level (1-5)" value={newUser.level} onChange={(e) => setNewUser({ ...newUser, level: e.target.value })} />
             <select className="select" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
-              <option value="User">User</option>
-              <option value="Admin">Admin</option>
+              <option value="User">User</option><option value="Admin">Admin</option>
             </select>
           </div>
           <button className="button" onClick={handleCreateUser}>Create User</button>
@@ -312,13 +232,13 @@ export default function AdminPage() {
             <div className="form-row">
               <input className="input" placeholder="Name" value={newDashboard.name} onChange={(e) => setNewDashboard({ ...newDashboard, name: e.target.value })} />
               <input className="input" placeholder="Description" value={newDashboard.description} onChange={(e) => setNewDashboard({ ...newDashboard, description: e.target.value })} />
-              <select className="select" value={newDashboard.primary_owner_id} onChange={(e) => setNewDashboard({ ...newDashboard, primary_owner_id: e.target.value })}>
-                <option value="">Primary Owner</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-              <select className="select" value={newDashboard.secondary_owner_id} onChange={(e) => setNewDashboard({ ...newDashboard, secondary_owner_id: e.target.value })}>
-                <option value="">Secondary Owner</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Owners</div>
+              <OwnerChips ownerIds={newDashboard.owner_ids} onRemove={removeOwnerFromNew} />
+              <select className="select" style={{ marginTop: 8, maxWidth: 260 }} value="" onChange={(e) => addOwnerToNew(e.target.value)}>
+                <option value="">+ Add owner…</option>
+                {users.filter((u) => !newDashboard.owner_ids.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
             <button className="button" onClick={handleCreateDashboard}>Create Dashboard</button>
@@ -329,23 +249,19 @@ export default function AdminPage() {
 
             {editingDashboard && (
               <div className="inline-create-panel" style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>
-                  Editing: {editingDashboard.name}
-                </div>
+                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>Editing: {editingDashboard.name}</div>
                 <div className="form-row">
                   <input className="input" placeholder="Name" value={editingDashboard.name}
                     onChange={(e) => setEditingDashboard({ ...editingDashboard, name: e.target.value })} />
                   <input className="input" placeholder="Description" value={editingDashboard.description}
                     onChange={(e) => setEditingDashboard({ ...editingDashboard, description: e.target.value })} />
-                  <select className="select" value={editingDashboard.primary_owner_id}
-                    onChange={(e) => setEditingDashboard({ ...editingDashboard, primary_owner_id: e.target.value })}>
-                    <option value="">Primary Owner</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                  <select className="select" value={editingDashboard.secondary_owner_id}
-                    onChange={(e) => setEditingDashboard({ ...editingDashboard, secondary_owner_id: e.target.value })}>
-                    <option value="">Secondary Owner</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Owners</div>
+                  <OwnerChips ownerIds={editingDashboard.ownerIds} onRemove={removeOwnerFromEdit} />
+                  <select className="select" style={{ marginTop: 8, maxWidth: 260 }} value="" onChange={(e) => addOwnerToEdit(e.target.value)}>
+                    <option value="">+ Add owner…</option>
+                    {users.filter((u) => !editingDashboard.ownerIds.includes(u.id)).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
                 <div className="inline-actions">
@@ -357,36 +273,28 @@ export default function AdminPage() {
 
             <table className="table">
               <thead>
-                <tr><th>Name</th><th>Description</th><th>Primary Owner</th><th>Secondary Owner</th><th>Status</th><th>Actions</th></tr>
+                <tr><th>Name</th><th>Description</th><th>Owners</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {dashboards.map((d) => (
-                  <tr key={d.id} style={editingDashboard?.id === d.id ? { background: "#eef6ff" } : {}}>
-                    <td style={{ fontWeight: 500 }}>{d.name}</td>
-                    <td style={{ color: "var(--muted)" }}>{d.description || "—"}</td>
-                    <td>{users.find((u) => u.id === d.primary_owner_id)?.name ?? "—"}</td>
-                    <td>{users.find((u) => u.id === d.secondary_owner_id)?.name ?? "—"}</td>
-                    <td><span className="badge">{d.is_active !== false ? "Active" : "Inactive"}</span></td>
-                    <td className="inline-actions">
-                      <button className="button secondary"
-                        onClick={() => setEditingDashboard({
-                          id: d.id,
-                          name: d.name,
-                          description: d.description || "",
-                          primary_owner_id: d.primary_owner_id || "",
-                          secondary_owner_id: d.secondary_owner_id || ""
-                        })}>
-                        Edit
-                      </button>
-                      <button className="button secondary"
-                        onClick={() => handleToggleDashboardActive(d)}>
-                        {d.is_active !== false ? "Deactivate" : "Activate"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {dashboards.map((d) => {
+                  const owners: any[] = d.owners ?? [];
+                  return (
+                    <tr key={d.id} style={editingDashboard?.id === d.id ? { background: "#eef6ff" } : {}}>
+                      <td style={{ fontWeight: 500 }}>{d.name}</td>
+                      <td style={{ color: "var(--muted)" }}>{d.description || "—"}</td>
+                      <td>{owners.length > 0 ? owners.map((o: any) => o.name).join(", ") : <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                      <td><span className="badge">{d.is_active !== false ? "Active" : "Inactive"}</span></td>
+                      <td className="inline-actions">
+                        <button className="button secondary" onClick={() => startEditDashboard(d)}>Edit</button>
+                        <button className="button secondary" onClick={() => handleToggleDashboardActive(d)}>
+                          {d.is_active !== false ? "Deactivate" : "Activate"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {dashboards.length === 0 && (
-                  <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No dashboards</td></tr>
+                  <tr><td colSpan={5} style={{ color: "var(--muted)", textAlign: "center" }}>No dashboards</td></tr>
                 )}
               </tbody>
             </table>
@@ -402,38 +310,22 @@ export default function AdminPage() {
               <input className="input" placeholder="Group name" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
               <input className="input" placeholder="Description" value={newGroup.description} onChange={(e) => setNewGroup({ ...newGroup, description: e.target.value })} />
             </div>
-            <div className="inline-actions">
-              <button className="button" onClick={handleCreateGroup}>Create Group</button>
-            </div>
+            <div className="inline-actions"><button className="button" onClick={handleCreateGroup}>Create Group</button></div>
             <table className="table" style={{ marginTop: 12 }}>
-              <thead>
-                <tr><th>Name</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {groups.map((g) => (
-                  <tr key={g.id}>
-                    <td>{g.name}</td>
-                    <td><span className="badge">{g.is_active ? "Active" : "Inactive"}</span></td>
-                  </tr>
-                ))}
-              </tbody>
+              <thead><tr><th>Name</th><th>Status</th></tr></thead>
+              <tbody>{groups.map((g) => <tr key={g.id}><td>{g.name}</td><td><span className="badge">{g.is_active ? "Active" : "Inactive"}</span></td></tr>)}</tbody>
             </table>
           </div>
-
           <div className="card">
-            <h3>Assign Group to Dashboard (Admin)</h3>
+            <h3>Assign Group to Dashboard</h3>
             <div className="form-row">
               <select className="select" value={groupAssign.dashboard_id} onChange={(e) => setGroupAssign({ ...groupAssign, dashboard_id: e.target.value })}>
                 <option value="">Dashboard</option>
-                {dashboardOptions.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
+                {dashboardOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
               <select className="select" value={groupAssign.group_id} onChange={(e) => setGroupAssign({ ...groupAssign, group_id: e.target.value })}>
                 <option value="">Group</option>
-                {groups.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
             <button className="button" onClick={handleAssignGroup}>Assign</button>
@@ -449,23 +341,17 @@ export default function AdminPage() {
             <input className="input" placeholder="Type" value={newAccount.account_type} onChange={(e) => setNewAccount({ ...newAccount, account_type: e.target.value })} />
             <input className="input" placeholder="Region" value={newAccount.region} onChange={(e) => setNewAccount({ ...newAccount, region: e.target.value })} />
             <select className="select" value={accountDashboard} onChange={(e) => setAccountDashboard(e.target.value)}>
-              <option value="">Dashboard (optional for Admin)</option>
-              {dashboardOptions.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
+              <option value="">Dashboard (optional)</option>
+              {dashboardOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </div>
           <button className="button" onClick={handleCreateAccount}>Create Account</button>
           <table className="table" style={{ marginTop: 12 }}>
-            <thead>
-              <tr><th>Name</th><th>Type</th><th>Region</th><th>Status</th><th>Action</th></tr>
-            </thead>
+            <thead><tr><th>Name</th><th>Type</th><th>Region</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
               {accounts.map((a) => (
                 <tr key={a.id}>
-                  <td>{a.account_name}</td>
-                  <td>{a.account_type || "-"}</td>
-                  <td>{a.region || "-"}</td>
+                  <td>{a.account_name}</td><td>{a.account_type || "-"}</td><td>{a.region || "-"}</td>
                   <td><span className="badge">{a.is_active ? "Active" : "Inactive"}</span></td>
                   <td><button className="button" onClick={() => toggleAccount(a)}>{a.is_active ? "Deactivate" : "Activate"}</button></td>
                 </tr>
@@ -481,17 +367,13 @@ export default function AdminPage() {
           <div className="form-row">
             <select className="select" value={categoryDashboard} onChange={(e) => setCategoryDashboard(e.target.value)}>
               <option value="">Dashboard</option>
-              {dashboardOptions.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
+              {dashboardOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             <input className="input" placeholder="Category name" value={newCategory.name} onChange={(e) => setNewCategory({ name: e.target.value })} />
           </div>
           <button className="button" onClick={handleCreateCategory}>Create Category</button>
           <table className="table" style={{ marginTop: 12 }}>
-            <thead>
-              <tr><th>Name</th><th>Status</th><th>Action</th></tr>
-            </thead>
+            <thead><tr><th>Name</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
               {categories.map((c) => (
                 <tr key={c.id}>
@@ -511,37 +393,27 @@ export default function AdminPage() {
           <div className="form-row">
             <select className="select" value={accessGrant.dashboard_id} onChange={(e) => setAccessGrant({ ...accessGrant, dashboard_id: e.target.value })}>
               <option value="">Dashboard</option>
-              {dashboardOptions.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
+              {dashboardOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             <select className="select" value={accessGrant.target_user_id} onChange={(e) => setAccessGrant({ ...accessGrant, target_user_id: e.target.value })}>
               <option value="">User</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
             <select className="select" value={accessGrant.can_view ? "yes" : "no"} onChange={(e) => setAccessGrant({ ...accessGrant, can_view: e.target.value === "yes" })}>
-              <option value="yes">Can View</option>
-              <option value="no">No View</option>
+              <option value="yes">Can View</option><option value="no">No View</option>
             </select>
             <select className="select" value={accessGrant.can_edit ? "yes" : "no"} onChange={(e) => setAccessGrant({ ...accessGrant, can_edit: e.target.value === "yes" })}>
-              <option value="no">No Edit</option>
-              <option value="yes">Can Edit</option>
+              <option value="no">No Edit</option><option value="yes">Can Edit</option>
             </select>
           </div>
           <button className="button" onClick={handleGrantAccess}>Grant Access</button>
           <table className="table" style={{ marginTop: 12 }}>
-            <thead>
-              <tr><th>User</th><th>Email</th><th>View</th><th>Edit</th></tr>
-            </thead>
+            <thead><tr><th>User</th><th>Email</th><th>View</th><th>Edit</th></tr></thead>
             <tbody>
               {accessList.map((a) => (
                 <tr key={a.user_id}>
-                  <td>{a.name}</td>
-                  <td>{a.email}</td>
-                  <td>{a.can_view ? "Yes" : "No"}</td>
-                  <td>{a.can_edit ? "Yes" : "No"}</td>
+                  <td>{a.name}</td><td>{a.email}</td>
+                  <td>{a.can_view ? "Yes" : "No"}</td><td>{a.can_edit ? "Yes" : "No"}</td>
                 </tr>
               ))}
             </tbody>
