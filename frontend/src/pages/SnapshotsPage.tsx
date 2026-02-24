@@ -42,8 +42,7 @@ export default function SnapshotsPage() {
 
   function downloadEmail() {
     if (!selectedDashboard) return;
-    const url = `${import.meta.env.VITE_API_URL || "http://localhost:4000"}/api/snapshots/email/${selectedDashboard}?preview=1`;
-    window.open(url, "_blank");
+    window.open(`/api/snapshots/email/${selectedDashboard}`, "_blank");
   }
 
   return (

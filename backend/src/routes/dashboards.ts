@@ -122,7 +122,8 @@ router.post("/:id/access", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
   const isOwner = await isDashboardOwner(userId, id);
-  if (!isOwner) return res.status(403).json({ error: "Owners only" });
+  const role = await getUserRole(userId);
+  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Not allowed" });
   const { target_user_id, can_view, can_edit } = req.body as any;
   if (!target_user_id) return res.status(400).json({ error: "Missing target_user_id" });
   await query(

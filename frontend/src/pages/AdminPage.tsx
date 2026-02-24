@@ -221,7 +221,11 @@ export default function AdminPage() {
         method: "POST",
         body: JSON.stringify(accessGrant)
       });
-      setAccessGrant({ dashboard_id: "", target_user_id: "", can_view: true, can_edit: false });
+      // Keep the selected dashboard, just reset the user fields
+      setAccessGrant((prev) => ({ ...prev, target_user_id: "", can_view: true, can_edit: false }));
+      // Reload access list to show the newly granted entry
+      const updated = await api(`/dashboards/${accessGrant.dashboard_id}/access`);
+      setAccessList(updated);
     } catch (err: any) {
       setError(err.message);
     }

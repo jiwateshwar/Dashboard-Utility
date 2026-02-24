@@ -50,7 +50,16 @@ export default function App() {
             <div className="header-title">PRISM</div>
             <div className="header-subtitle">Performance Reporting, Insights & Status Management</div>
           </div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>{user.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, color: "#6b7280" }}>{user.name}</span>
+            <button
+              className="button secondary"
+              style={{ height: 32, padding: "0 14px", fontSize: 13 }}
+              onClick={() => api("/auth/logout", { method: "POST" }).finally(() => setUser(null))}
+            >
+              Log out
+            </button>
+          </div>
         </div>
         <main className="main">
           <Routes>
