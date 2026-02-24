@@ -36,6 +36,9 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/notifications">
         Escalations
       </NavLink>
+      <NavLink className="nav-item" to="/feedback">
+        Feedback
+      </NavLink>
     </aside>
   );
 }

@@ -12,6 +12,7 @@ import AdminPage from "./pages/AdminPage";
 import EscalationRulesPage from "./pages/EscalationRulesPage";
 import AuditLogPage from "./pages/AuditLogPage";
 import SnapshotsPage from "./pages/SnapshotsPage";
+import FeedbackPage from "./pages/FeedbackPage";
 import Sidebar from "./components/Sidebar";
 
 export type User = {
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="/escalations" element={<EscalationRulesPage />} />
             <Route path="/audit" element={<AuditLogPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/feedback" element={<FeedbackPage user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
