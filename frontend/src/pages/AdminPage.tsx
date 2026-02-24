@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 export default function AdminPage() {
+  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access">("users");
   const [users, setUsers] = useState<any[]>([]);
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -231,7 +232,16 @@ export default function AdminPage() {
       <h1>Governance Admin</h1>
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
 
-      <div className="grid two" style={{ marginBottom: 24 }}>
+      <div className="inline-actions" style={{ marginBottom: 16 }}>
+        <button className={`button ${tab === "users" ? "" : "secondary"}`} onClick={() => setTab("users")}>Users</button>
+        <button className={`button ${tab === "dashboards" ? "" : "secondary"}`} onClick={() => setTab("dashboards")}>Dashboards</button>
+        <button className={`button ${tab === "groups" ? "" : "secondary"}`} onClick={() => setTab("groups")}>Groups</button>
+        <button className={`button ${tab === "accounts" ? "" : "secondary"}`} onClick={() => setTab("accounts")}>Accounts</button>
+        <button className={`button ${tab === "categories" ? "" : "secondary"}`} onClick={() => setTab("categories")}>Categories</button>
+        <button className={`button ${tab === "access" ? "" : "secondary"}`} onClick={() => setTab("access")}>Access</button>
+      </div>
+
+      {tab === "users" && (
         <div className="card">
           <h3>Create User (Admin)</h3>
           <div className="form-row">
@@ -251,7 +261,9 @@ export default function AdminPage() {
           </div>
           <button className="button" onClick={handleCreateUser}>Create User</button>
         </div>
+      )}
 
+      {tab === "dashboards" && (
         <div className="card">
           <h3>Create Dashboard (Admin)</h3>
           <div className="form-row">
@@ -272,54 +284,56 @@ export default function AdminPage() {
           </div>
           <button className="button" onClick={handleCreateDashboard}>Create Dashboard</button>
         </div>
-      </div>
+      )}
 
-      <div className="grid two" style={{ marginBottom: 24 }}>
-        <div className="card">
-          <h3>Groups (Admin)</h3>
-          <div className="form-row">
-            <input className="input" placeholder="Group name" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
-            <input className="input" placeholder="Description" value={newGroup.description} onChange={(e) => setNewGroup({ ...newGroup, description: e.target.value })} />
+      {tab === "groups" && (
+        <div className="grid two">
+          <div className="card">
+            <h3>Groups (Admin)</h3>
+            <div className="form-row">
+              <input className="input" placeholder="Group name" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
+              <input className="input" placeholder="Description" value={newGroup.description} onChange={(e) => setNewGroup({ ...newGroup, description: e.target.value })} />
+            </div>
+            <div className="inline-actions">
+              <button className="button" onClick={handleCreateGroup}>Create Group</button>
+            </div>
+            <table className="table" style={{ marginTop: 12 }}>
+              <thead>
+                <tr><th>Name</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => (
+                  <tr key={g.id}>
+                    <td>{g.name}</td>
+                    <td><span className="badge">{g.is_active ? "Active" : "Inactive"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="inline-actions">
-            <button className="button" onClick={handleCreateGroup}>Create Group</button>
+
+          <div className="card">
+            <h3>Assign Group to Dashboard (Admin)</h3>
+            <div className="form-row">
+              <select className="select" value={groupAssign.dashboard_id} onChange={(e) => setGroupAssign({ ...groupAssign, dashboard_id: e.target.value })}>
+                <option value="">Dashboard</option>
+                {dashboardOptions.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+              <select className="select" value={groupAssign.group_id} onChange={(e) => setGroupAssign({ ...groupAssign, group_id: e.target.value })}>
+                <option value="">Group</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+            <button className="button" onClick={handleAssignGroup}>Assign</button>
           </div>
-          <table className="table" style={{ marginTop: 12 }}>
-            <thead>
-              <tr><th>Name</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {groups.map((g) => (
-                <tr key={g.id}>
-                  <td>{g.name}</td>
-                  <td><span className="badge">{g.is_active ? "Active" : "Inactive"}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
+      )}
 
-        <div className="card">
-          <h3>Assign Group to Dashboard (Admin)</h3>
-          <div className="form-row">
-            <select className="select" value={groupAssign.dashboard_id} onChange={(e) => setGroupAssign({ ...groupAssign, dashboard_id: e.target.value })}>
-              <option value="">Dashboard</option>
-              {dashboardOptions.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <select className="select" value={groupAssign.group_id} onChange={(e) => setGroupAssign({ ...groupAssign, group_id: e.target.value })}>
-              <option value="">Group</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
-          <button className="button" onClick={handleAssignGroup}>Assign</button>
-        </div>
-      </div>
-
-      <div className="grid two" style={{ marginBottom: 24 }}>
+      {tab === "accounts" && (
         <div className="card">
           <h3>Accounts (Admin/Owner)</h3>
           <div className="form-row">
@@ -351,7 +365,9 @@ export default function AdminPage() {
             </tbody>
           </table>
         </div>
+      )}
 
+      {tab === "categories" && (
         <div className="card">
           <h3>Categories (Owner)</h3>
           <div className="form-row">
@@ -379,49 +395,51 @@ export default function AdminPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      )}
 
-      <div className="card">
-        <h3>Dashboard Access (Owner)</h3>
-        <div className="form-row">
-          <select className="select" value={accessGrant.dashboard_id} onChange={(e) => setAccessGrant({ ...accessGrant, dashboard_id: e.target.value })}>
-            <option value="">Dashboard</option>
-            {dashboardOptions.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-          <select className="select" value={accessGrant.target_user_id} onChange={(e) => setAccessGrant({ ...accessGrant, target_user_id: e.target.value })}>
-            <option value="">User</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
-          <select className="select" value={accessGrant.can_view ? "yes" : "no"} onChange={(e) => setAccessGrant({ ...accessGrant, can_view: e.target.value === "yes" })}>
-            <option value="yes">Can View</option>
-            <option value="no">No View</option>
-          </select>
-          <select className="select" value={accessGrant.can_edit ? "yes" : "no"} onChange={(e) => setAccessGrant({ ...accessGrant, can_edit: e.target.value === "yes" })}>
-            <option value="no">No Edit</option>
-            <option value="yes">Can Edit</option>
-          </select>
+      {tab === "access" && (
+        <div className="card">
+          <h3>Dashboard Access (Owner)</h3>
+          <div className="form-row">
+            <select className="select" value={accessGrant.dashboard_id} onChange={(e) => setAccessGrant({ ...accessGrant, dashboard_id: e.target.value })}>
+              <option value="">Dashboard</option>
+              {dashboardOptions.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <select className="select" value={accessGrant.target_user_id} onChange={(e) => setAccessGrant({ ...accessGrant, target_user_id: e.target.value })}>
+              <option value="">User</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <select className="select" value={accessGrant.can_view ? "yes" : "no"} onChange={(e) => setAccessGrant({ ...accessGrant, can_view: e.target.value === "yes" })}>
+              <option value="yes">Can View</option>
+              <option value="no">No View</option>
+            </select>
+            <select className="select" value={accessGrant.can_edit ? "yes" : "no"} onChange={(e) => setAccessGrant({ ...accessGrant, can_edit: e.target.value === "yes" })}>
+              <option value="no">No Edit</option>
+              <option value="yes">Can Edit</option>
+            </select>
+          </div>
+          <button className="button" onClick={handleGrantAccess}>Grant Access</button>
+          <table className="table" style={{ marginTop: 12 }}>
+            <thead>
+              <tr><th>User</th><th>Email</th><th>View</th><th>Edit</th></tr>
+            </thead>
+            <tbody>
+              {accessList.map((a) => (
+                <tr key={a.user_id}>
+                  <td>{a.name}</td>
+                  <td>{a.email}</td>
+                  <td>{a.can_view ? "Yes" : "No"}</td>
+                  <td>{a.can_edit ? "Yes" : "No"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <button className="button" onClick={handleGrantAccess}>Grant Access</button>
-        <table className="table" style={{ marginTop: 12 }}>
-          <thead>
-            <tr><th>User</th><th>Email</th><th>View</th><th>Edit</th></tr>
-          </thead>
-          <tbody>
-            {accessList.map((a) => (
-              <tr key={a.user_id}>
-                <td>{a.name}</td>
-                <td>{a.email}</td>
-                <td>{a.can_view ? "Yes" : "No"}</td>
-                <td>{a.can_edit ? "Yes" : "No"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      )}
     </div>
   );
 }
