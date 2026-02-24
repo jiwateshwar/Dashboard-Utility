@@ -38,6 +38,19 @@ router.post("/", async (req, res) => {
   res.json({ id });
 });
 
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  const { rows } = await query(
+    `SELECT DISTINCT d.* FROM dashboards d
+     LEFT JOIN dashboard_access da ON da.dashboard_id = d.id
+     WHERE d.id = $1 AND (d.primary_owner_id = $2 OR d.secondary_owner_id = $2 OR da.user_id = $2)`,
+    [id, userId]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Not found" });
+  res.json(rows[0]);
+});
+
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
