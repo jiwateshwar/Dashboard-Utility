@@ -234,36 +234,91 @@ export default function DashboardDetailPage() {
   if (!id) return null;
 
   return (
-    <div>
-      <h1>Dashboard Overview</h1>
+    <div className="dashboard-shell">
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
-      <div className="inline-actions" style={{ marginBottom: 12 }}>
+      <div className="dashboard-header">
+        <h1>📑 PRISM Dashboard Update</h1>
+        <div className="dashboard-subtitle">Prepared by PRISM | Executive Summary</div>
+      </div>
+
+      {summary && (
+        <div className="kpi-strip" style={{ marginTop: 12 }}>
+          <div className="kpi-grid">
+            <div className="kpi-card">
+              <div className="kpi-value" style={{ color: "#1d63ed" }}>{summary.taskStats.open}</div>
+              <div className="kpi-label">Open Tasks</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value" style={{ color: "#e53935" }}>{summary.taskStats.red}</div>
+              <div className="kpi-label">Red Tasks</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value" style={{ color: "#2ebd85" }}>{summary.riskStats.totalActive}</div>
+              <div className="kpi-label">Active Risks</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value" style={{ color: "#f5a623" }}>{summary.decisionStats.pending}</div>
+              <div className="kpi-label">Decisions Pending</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value" style={{ color: "#6366f1" }}>{summary.healthScore}</div>
+              <div className="kpi-label">Health Score</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="inline-actions" style={{ margin: "12px 0" }}>
         <label className="badge">
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show Archived
         </label>
       </div>
-      {summary && (
-        <div className="grid three" style={{ marginBottom: 24 }}>
-          <div className="card">
-            <h3>Tasks</h3>
-            <div>Open: {summary.taskStats.open}</div>
-            <div>In Progress: {summary.taskStats.inProgress}</div>
-            <div>Pending Approval: {summary.taskStats.pendingApproval}</div>
-          </div>
-          <div className="card">
-            <h3>Risks</h3>
-            <div>Total Active: {summary.riskStats.totalActive}</div>
-            <div>Red Risks: {summary.riskStats.red}</div>
-            <div>Overdue Mitigations: {summary.riskStats.overdueMitigations}</div>
-          </div>
-          <div className="card">
-            <h3>Decisions</h3>
-            <div>Pending: {summary.decisionStats.pending}</div>
-            <div>Overdue: {summary.decisionStats.overdue}</div>
-            <div>Health Score: {summary.healthScore}</div>
+
+      <div className="grid two" style={{ marginBottom: 16 }}>
+        <div className="section accent-blue">
+          <h3 className="section-title">✨ Highlights</h3>
+          <div className="section-body">
+            <ul>
+              {tasks.slice(0, 4).map((t) => (
+                <li key={t.id}>{t.item_details}</li>
+              ))}
+            </ul>
           </div>
         </div>
-      )}
+        <div className="section accent-amber">
+          <h3 className="section-title">🔶 Decisions Needed</h3>
+          <div className="section-body">
+            <ul>
+              {decisions.slice(0, 4).map((d) => (
+                <li key={d.id}>{d.decision_title}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid two" style={{ marginBottom: 16 }}>
+        <div className="section accent-red">
+          <h3 className="section-title">⚠️ Risks & Issues</h3>
+          <div className="section-body">
+            <ul>
+              {risks.slice(0, 5).map((r) => (
+                <li key={r.id}>{r.risk_title}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        <div className="section accent-green">
+          <h3 className="section-title">⏭️ Next Priorities</h3>
+          <div className="section-body">
+            <ul>
+              {tasks.slice(0, 5).map((t) => (
+                <li key={t.id}>{t.item_details}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
 
       <div className="grid two" style={{ marginBottom: 24 }}>
         <div className="card">
