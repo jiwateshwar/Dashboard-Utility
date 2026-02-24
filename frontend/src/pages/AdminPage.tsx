@@ -27,6 +27,11 @@ export default function AdminPage() {
     secondary_owner_id: ""
   });
 
+  const [editingDashboard, setEditingDashboard] = useState<{
+    id: string; name: string; description: string;
+    primary_owner_id: string; secondary_owner_id: string;
+  } | null>(null);
+
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
   const [groupAssign, setGroupAssign] = useState({ dashboard_id: "", group_id: "" });
   const [newAccount, setNewAccount] = useState({ account_name: "", account_type: "", region: "" });
@@ -111,6 +116,39 @@ export default function AdminPage() {
         })
       });
       setNewDashboard({ name: "", description: "", primary_owner_id: "", secondary_owner_id: "" });
+      await loadAll();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleUpdateDashboard() {
+    if (!editingDashboard) return;
+    setError(null);
+    try {
+      await api(`/dashboards/${editingDashboard.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editingDashboard.name,
+          description: editingDashboard.description,
+          primary_owner_id: editingDashboard.primary_owner_id || null,
+          secondary_owner_id: editingDashboard.secondary_owner_id || null
+        })
+      });
+      setEditingDashboard(null);
+      await loadAll();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleToggleDashboardActive(dashboard: any) {
+    setError(null);
+    try {
+      await api(`/dashboards/${dashboard.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: !dashboard.is_active })
+      });
       await loadAll();
     } catch (err: any) {
       setError(err.message);
@@ -268,25 +306,91 @@ export default function AdminPage() {
       )}
 
       {tab === "dashboards" && (
-        <div className="card">
-          <h3>Create Dashboard (Admin)</h3>
-          <div className="form-row">
-            <input className="input" placeholder="Name" value={newDashboard.name} onChange={(e) => setNewDashboard({ ...newDashboard, name: e.target.value })} />
-            <input className="input" placeholder="Description" value={newDashboard.description} onChange={(e) => setNewDashboard({ ...newDashboard, description: e.target.value })} />
-            <select className="select" value={newDashboard.primary_owner_id} onChange={(e) => setNewDashboard({ ...newDashboard, primary_owner_id: e.target.value })}>
-              <option value="">Primary Owner</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-            <select className="select" value={newDashboard.secondary_owner_id} onChange={(e) => setNewDashboard({ ...newDashboard, secondary_owner_id: e.target.value })}>
-              <option value="">Secondary Owner</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="card">
+            <h3 style={{ margin: "0 0 12px 0" }}>Create Dashboard</h3>
+            <div className="form-row">
+              <input className="input" placeholder="Name" value={newDashboard.name} onChange={(e) => setNewDashboard({ ...newDashboard, name: e.target.value })} />
+              <input className="input" placeholder="Description" value={newDashboard.description} onChange={(e) => setNewDashboard({ ...newDashboard, description: e.target.value })} />
+              <select className="select" value={newDashboard.primary_owner_id} onChange={(e) => setNewDashboard({ ...newDashboard, primary_owner_id: e.target.value })}>
+                <option value="">Primary Owner</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <select className="select" value={newDashboard.secondary_owner_id} onChange={(e) => setNewDashboard({ ...newDashboard, secondary_owner_id: e.target.value })}>
+                <option value="">Secondary Owner</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+            <button className="button" onClick={handleCreateDashboard}>Create Dashboard</button>
           </div>
-          <button className="button" onClick={handleCreateDashboard}>Create Dashboard</button>
+
+          <div className="card">
+            <h3 style={{ margin: "0 0 12px 0" }}>Existing Dashboards</h3>
+
+            {editingDashboard && (
+              <div className="inline-create-panel" style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>
+                  Editing: {editingDashboard.name}
+                </div>
+                <div className="form-row">
+                  <input className="input" placeholder="Name" value={editingDashboard.name}
+                    onChange={(e) => setEditingDashboard({ ...editingDashboard, name: e.target.value })} />
+                  <input className="input" placeholder="Description" value={editingDashboard.description}
+                    onChange={(e) => setEditingDashboard({ ...editingDashboard, description: e.target.value })} />
+                  <select className="select" value={editingDashboard.primary_owner_id}
+                    onChange={(e) => setEditingDashboard({ ...editingDashboard, primary_owner_id: e.target.value })}>
+                    <option value="">Primary Owner</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  <select className="select" value={editingDashboard.secondary_owner_id}
+                    onChange={(e) => setEditingDashboard({ ...editingDashboard, secondary_owner_id: e.target.value })}>
+                    <option value="">Secondary Owner</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+                <div className="inline-actions">
+                  <button className="button" onClick={handleUpdateDashboard}>Save Changes</button>
+                  <button className="button secondary" onClick={() => setEditingDashboard(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <table className="table">
+              <thead>
+                <tr><th>Name</th><th>Description</th><th>Primary Owner</th><th>Secondary Owner</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {dashboards.map((d) => (
+                  <tr key={d.id} style={editingDashboard?.id === d.id ? { background: "#eef6ff" } : {}}>
+                    <td style={{ fontWeight: 500 }}>{d.name}</td>
+                    <td style={{ color: "var(--muted)" }}>{d.description || "—"}</td>
+                    <td>{users.find((u) => u.id === d.primary_owner_id)?.name ?? "—"}</td>
+                    <td>{users.find((u) => u.id === d.secondary_owner_id)?.name ?? "—"}</td>
+                    <td><span className="badge">{d.is_active !== false ? "Active" : "Inactive"}</span></td>
+                    <td className="inline-actions">
+                      <button className="button secondary"
+                        onClick={() => setEditingDashboard({
+                          id: d.id,
+                          name: d.name,
+                          description: d.description || "",
+                          primary_owner_id: d.primary_owner_id || "",
+                          secondary_owner_id: d.secondary_owner_id || ""
+                        })}>
+                        Edit
+                      </button>
+                      <button className="button secondary"
+                        onClick={() => handleToggleDashboardActive(d)}>
+                        {d.is_active !== false ? "Deactivate" : "Activate"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {dashboards.length === 0 && (
+                  <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No dashboards</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
