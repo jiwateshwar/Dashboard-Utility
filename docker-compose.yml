@@ -17,7 +17,7 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://prism:prism@db:5432/prism
       SESSION_SECRET: prism_dev_secret
-      CORS_ORIGIN: http://truenas.local:5173
+      CORS_ORIGIN: https://prism.theshabd.org
     ports:
       - "4000:4000"
     depends_on:
@@ -26,10 +26,6 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_API_URL: http://truenas.local:4000
-    environment:
-      VITE_API_URL: http://truenas.local:4000
     ports:
       - "5173:80"
     depends_on:
