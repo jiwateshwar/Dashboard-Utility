@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
   const id = uuid();
-  let finalLevel = level ? Number(level) : null;
+  let finalLevel = level ? Number(level) : 0;
   if (manager_id) {
     const manager = await query(`SELECT level FROM users WHERE id = $1`, [manager_id]);
     const managerLevel = manager.rows[0]?.level;
