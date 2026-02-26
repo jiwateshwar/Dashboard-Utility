@@ -14,6 +14,10 @@ const PgSession = pgSession(session);
 
 export const app = express();
 
+// Trust the first proxy hop (Cloudflare tunnel / nginx).
+// Required so express-rate-limit can read X-Forwarded-For without throwing.
+app.set("trust proxy", 1);
+
 app.use(helmet());
 app.use(compression());
 app.use(

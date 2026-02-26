@@ -255,19 +255,19 @@ router.get("/:id/summary", async (req, res) => {
        SELECT d.id FROM dashboards d JOIN children c ON d.parent_dashboard_id = c.id
      ),
      t AS (
-       SELECT 'task' AS kind, status, target_date::text AS deadline, created_at, NULL::text AS impact_level
+       SELECT 'task' AS kind, status::text AS status, target_date::text AS deadline, created_at, NULL::text AS impact_level
        FROM tasks
        WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
          AND (dashboard_id = $1 OR publish_flag = true)
      ),
      r AS (
-       SELECT 'risk' AS kind, status, target_mitigation_date::text AS deadline, NULL::timestamptz AS created_at, impact_level
+       SELECT 'risk' AS kind, status::text AS status, target_mitigation_date::text AS deadline, NULL::timestamptz AS created_at, impact_level::text AS impact_level
        FROM risks
        WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
          AND (dashboard_id = $1 OR publish_flag = true)
      ),
      dec AS (
-       SELECT 'decision' AS kind, status, decision_deadline::text AS deadline, NULL::timestamptz AS created_at, NULL::text AS impact_level
+       SELECT 'decision' AS kind, status::text AS status, decision_deadline::text AS deadline, NULL::timestamptz AS created_at, NULL::text AS impact_level
        FROM decisions
        WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
          AND (dashboard_id = $1 OR publish_flag = true)
