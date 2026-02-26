@@ -4,20 +4,82 @@ import { api } from "../api";
 
 type Mode = "view" | "edit";
 
-const RAG_CLASS: Record<string, string> = { Green: "green", Amber: "amber", Red: "red" };
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
 const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", "Closed Pending Approval": "amber", "Closed Accepted": "green" };
-const RAG_DOT: Record<string, string> = { Green: "#2ebd85", Amber: "#f5a623", Red: "#e53935" };
 
 function fmt(dateStr?: string) {
   if (!dateStr) return "—";
   return dateStr.slice(0, 10);
 }
 
+/** Returns days past target_date (positive = overdue). Negative means on track. */
+function daysPastDue(targetDate?: string): number {
+  if (!targetDate) return -999;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(targetDate.slice(0, 10));
+  return Math.floor((today.getTime() - due.getTime()) / 86400000);
+}
+
+/** Days until target_date (positive = future). */
+function daysUntilDue(targetDate?: string): number {
+  if (!targetDate) return 999;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(targetDate.slice(0, 10));
+  return Math.floor((due.getTime() - today.getTime()) / 86400000);
+}
+
+/** Coloured chip showing overdue severity. Returns null if on track. */
+function AgingChip({ targetDate, status }: { targetDate?: string; status?: string }) {
+  const closed = ["Closed Accepted", "Closed Pending Approval"];
+  if (!targetDate || (status && closed.includes(status))) return null;
+  const days = daysPastDue(targetDate);
+  if (days <= 0) return null;
+  const [bg, color] =
+    days <= 3  ? ["rgba(245,166,35,0.15)",  "#f5a623"] :
+    days <= 7  ? ["rgba(251,140,0,0.15)",   "#fb8c00"] :
+    days <= 14 ? ["rgba(239,106,98,0.15)",  "#ef6a62"] :
+                 ["rgba(198,40,40,0.15)",   "#c62828"];
+  return (
+    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600, background: bg, color, whiteSpace: "nowrap" }}>
+      +{days}d overdue
+    </span>
+  );
+}
+
+/** Green chip for upcoming tasks */
+function DueChip({ targetDate }: { targetDate?: string }) {
+  if (!targetDate) return null;
+  const days = daysUntilDue(targetDate);
+  if (days < 0) return null;
+  const [bg, color] =
+    days === 0 ? ["rgba(245,166,35,0.15)", "#f5a623"] :
+    days <= 3  ? ["rgba(245,166,35,0.10)", "#f5a623"] :
+    days <= 7  ? ["rgba(46,189,133,0.12)", "#2ebd85"] :
+                 ["rgba(46,189,133,0.10)", "#2ebd85"];
+  const label = days === 0 ? "Due today" : `Due in ${days}d`;
+  return (
+    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600, background: bg, color, whiteSpace: "nowrap" }}>
+      {label}
+    </span>
+  );
+}
+
+/** Overdue chip for decisions/risk mitigations */
+function DeadlineChip({ deadline, label }: { deadline?: string; label?: string }) {
+  if (!deadline) return null;
+  const days = daysPastDue(deadline);
+  if (days <= 0) return null;
+  return (
+    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600, background: "rgba(198,40,40,0.12)", color: "#c62828", whiteSpace: "nowrap" }}>
+      {label ?? `+${days}d overdue`}
+    </span>
+  );
+}
+
 const EMPTY_TASK = {
   category_id: "", account_id: "", item_details: "", owner_id: "",
-  target_date: "", sla_days: "", rag_status: "Green", status: "Open", publish_flag: false
+  target_date: "", sla_days: "", status: "Open", publish_flag: false
 };
 const EMPTY_RISK = {
   account_id: "", risk_title: "", risk_description: "", risk_owner: "",
@@ -215,7 +277,6 @@ export default function DashboardDetailPage() {
       owner_id: t.owner_id,
       target_date: t.target_date?.slice(0, 10) || "",
       sla_days: t.sla_days ?? "",
-      rag_status: t.rag_status,
       status: t.status,
       publish_flag: t.publish_flag
     });
@@ -263,6 +324,45 @@ export default function DashboardDetailPage() {
 
   const hasInherited = inheritedTasks.length > 0 || inheritedRisks.length > 0 || inheritedDecisions.length > 0;
 
+  // Computed fortnight views (all tasks, own + inherited)
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const in14 = new Date(today); in14.setDate(today.getDate() + 14);
+  const ago14 = new Date(today); ago14.setDate(today.getDate() - 14);
+
+  const openStatuses = ["Open", "In Progress"];
+  const plannedFortnight = tasks
+    .filter((t) => {
+      if (!t.target_date || !openStatuses.includes(t.status)) return false;
+      const due = new Date(t.target_date.slice(0, 10));
+      return due >= today && due <= in14;
+    })
+    .sort((a, b) => a.target_date.localeCompare(b.target_date));
+
+  const closedFortnight = tasks
+    .filter((t) => {
+      if (t.status !== "Closed Accepted") return false;
+      if (!t.closure_approved_at) return false;
+      const closed = new Date(t.closure_approved_at);
+      return closed >= ago14;
+    })
+    .sort((a, b) => b.closure_approved_at.localeCompare(a.closure_approved_at));
+
+  // Due this fortnight count for KPI (includes tasks due today up to +14d)
+  const dueFortnight = tasks.filter((t) => {
+    if (!t.target_date || !openStatuses.includes(t.status)) return false;
+    const due = new Date(t.target_date.slice(0, 10));
+    return due >= today && due <= in14;
+  }).length;
+
+  // Source badge (for inherited items)
+  function SourceBadge({ name }: { name: string }) {
+    return (
+      <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>
+        {name}
+      </span>
+    );
+  }
+
   return (
     <div className="dashboard-shell">
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
@@ -294,8 +394,12 @@ export default function DashboardDetailPage() {
               <div className="kpi-label">Open Tasks</div>
             </div>
             <div className="kpi-card">
-              <div className="kpi-value" style={{ color: "#e53935" }}>{summary.taskStats.red}</div>
-              <div className="kpi-label">Red Tasks</div>
+              <div className="kpi-value" style={{ color: "#e53935" }}>{summary.taskStats.overdue}</div>
+              <div className="kpi-label">Overdue Tasks</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-value" style={{ color: "#f5a623" }}>{dueFortnight}</div>
+              <div className="kpi-label">Due This Fortnight</div>
             </div>
             <div className="kpi-card">
               <div className="kpi-value" style={{ color: "#2ebd85" }}>{summary.riskStats.totalActive}</div>
@@ -322,111 +426,168 @@ export default function DashboardDetailPage() {
       {/* ── VIEW MODE ── */}
       {mode === "view" && (
         <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
-            <div className="section accent-blue">
-              <h3 className="section-title">Highlights</h3>
-              <div className="section-body">
-                <ul>{tasks.slice(0, 4).map((t) => <li key={t.id}>{t.item_details}</li>)}</ul>
-              </div>
-            </div>
-            <div className="section accent-amber">
-              <h3 className="section-title">Decisions Needed</h3>
-              <div className="section-body">
-                <ul>{decisions.slice(0, 4).map((d) => <li key={d.id}>{d.decision_title}</li>)}</ul>
-              </div>
-            </div>
-            <div className="section accent-red">
-              <h3 className="section-title">Risks &amp; Issues</h3>
-              <div className="section-body">
-                <ul>{risks.slice(0, 5).map((r) => <li key={r.id}>{r.risk_title}</li>)}</ul>
-              </div>
-            </div>
-            <div className="section accent-green">
-              <h3 className="section-title">Next Priorities</h3>
-              <div className="section-body">
-                <ul>{tasks.slice(0, 5).map((t) => <li key={t.id}>{t.item_details}</li>)}</ul>
-              </div>
-            </div>
-          </div>
+          {/* Per-category task cards */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+            {categoryOptions.map((cat) => {
+              const catTasks = tasks.filter((t) => t.category_id === cat.id);
+              return (
+                <div key={cat.id} className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: catTasks.length > 0 ? 10 : 0 }}>
+                    <h3 style={{ margin: 0 }}>{cat.name}</h3>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                      {catTasks.length} {catTasks.length === 1 ? "item" : "items"}
+                    </span>
+                  </div>
+                  {catTasks.length === 0 ? (
+                    <div style={{ color: "var(--muted)", fontSize: 13 }}>No items</div>
+                  ) : (
+                    catTasks.map((t) => (
+                      <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                            {ownerName(t.owner_id)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
+                            {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                          <AgingChip targetDate={t.target_date} status={t.status} />
+                          <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
 
-          {/* Tasks — read-only */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 12px 0" }}>Tasks</h3>
-            <table className="table">
-              <thead>
-                <tr><th>Task</th><th>Category</th><th>Account</th><th>Owner</th><th>Target</th><th>RAG</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
-              </thead>
-              <tbody>
-                {tasks.map((t) => (
-                  <tr key={t.id}>
-                    <td>{t.item_details}</td>
-                    <td>{catName(t.category_id)}</td>
-                    <td>{acctName(t.account_id)}</td>
-                    <td>{ownerName(t.owner_id)}</td>
-                    <td>{fmt(t.target_date)}</td>
-                    <td><span className={`tag ${RAG_CLASS[t.rag_status] ?? "green"}`}>{t.rag_status}</span></td>
-                    <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
-                    {hasInherited && <td>{t.source_dashboard_id !== id ? <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{t.source_dashboard_name}</span> : null}</td>}
-                  </tr>
-                ))}
-                {tasks.length === 0 && <tr><td colSpan={hasInherited ? 8 : 7} style={{ color: "var(--muted)", textAlign: "center" }}>No tasks</td></tr>}
-              </tbody>
-            </table>
-          </div>
+            {/* Virtual: Planned for coming fortnight */}
+            <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: plannedFortnight.length > 0 ? 10 : 0 }}>
+                <h3 style={{ margin: 0 }}>Planned for Coming Fortnight</h3>
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                  {plannedFortnight.length} {plannedFortnight.length === 1 ? "item" : "items"}
+                </span>
+              </div>
+              {plannedFortnight.length === 0 ? (
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>No open tasks due in the next 14 days</div>
+              ) : (
+                plannedFortnight.map((t) => (
+                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                        {catName(t.category_id)} · {ownerName(t.owner_id)}
+                        {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                      <DueChip targetDate={t.target_date} />
+                      <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
 
-          {/* Risks — read-only */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 12px 0" }}>Risks</h3>
-            <table className="table">
-              <thead>
-                <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Probability</th><th>Target</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
-              </thead>
-              <tbody>
-                {risks.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{r.risk_title}</div>
-                      {r.risk_description && <div style={{ color: "var(--muted)", fontSize: 12 }}>{r.risk_description}</div>}
-                    </td>
-                    <td>{acctName(r.account_id)}</td>
-                    <td>{ownerName(r.risk_owner)}</td>
-                    <td><span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span></td>
-                    <td>{r.probability}</td>
-                    <td>{fmt(r.target_mitigation_date)}</td>
-                    <td><span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span></td>
-                    {hasInherited && <td>{r.source_dashboard_id !== id ? <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{r.source_dashboard_name}</span> : null}</td>}
-                  </tr>
-                ))}
-                {risks.length === 0 && <tr><td colSpan={hasInherited ? 8 : 7} style={{ color: "var(--muted)", textAlign: "center" }}>No risks</td></tr>}
-              </tbody>
-            </table>
+            {/* Virtual: Closed in last fortnight */}
+            <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: closedFortnight.length > 0 ? 10 : 0 }}>
+                <h3 style={{ margin: 0 }}>Closed in Last Fortnight</h3>
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                  {closedFortnight.length} {closedFortnight.length === 1 ? "item" : "items"}
+                </span>
+              </div>
+              {closedFortnight.length === 0 ? (
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks closed in the last 14 days</div>
+              ) : (
+                closedFortnight.map((t) => (
+                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                        {catName(t.category_id)} · {ownerName(t.owner_id)} · Closed {fmt(t.closure_approved_at)}
+                        {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
+                      </div>
+                    </div>
+                    <span className="tag green">Closed Accepted</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Decisions — read-only */}
           <div className="card" style={{ marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 12px 0" }}>Decisions</h3>
-            <table className="table">
-              <thead>
-                <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Impact Area</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
-              </thead>
-              <tbody>
-                {decisions.map((d) => (
-                  <tr key={d.id}>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{d.decision_title}</div>
-                      {d.decision_context && <div style={{ color: "var(--muted)", fontSize: 12 }}>{d.decision_context}</div>}
-                    </td>
-                    <td>{acctName(d.account_id)}</td>
-                    <td>{ownerName(d.decision_owner)}</td>
-                    <td>{fmt(d.decision_deadline)}</td>
-                    <td>{d.impact_area || "—"}</td>
-                    <td><span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span></td>
-                    {hasInherited && <td>{d.source_dashboard_id !== id ? <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{d.source_dashboard_name}</span> : null}</td>}
-                  </tr>
-                ))}
-                {decisions.length === 0 && <tr><td colSpan={hasInherited ? 7 : 6} style={{ color: "var(--muted)", textAlign: "center" }}>No decisions</td></tr>}
-              </tbody>
-            </table>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h3 style={{ margin: 0 }}>Decisions</h3>
+              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{decisions.length} {decisions.length === 1 ? "item" : "items"}</span>
+            </div>
+            {decisions.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>No decisions</div>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Impact Area</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
+                </thead>
+                <tbody>
+                  {decisions.map((d) => (
+                    <tr key={d.id}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{d.decision_title}</div>
+                        {d.decision_context && <div style={{ color: "var(--muted)", fontSize: 12 }}>{d.decision_context}</div>}
+                      </td>
+                      <td>{acctName(d.account_id)}</td>
+                      <td>{ownerName(d.decision_owner)}</td>
+                      <td>
+                        <div>{fmt(d.decision_deadline)}</div>
+                        {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
+                      </td>
+                      <td>{d.impact_area || "—"}</td>
+                      <td><span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span></td>
+                      {hasInherited && <td>{d.source_dashboard_id !== id ? <SourceBadge name={d.source_dashboard_name} /> : null}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Risks — read-only */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h3 style={{ margin: 0 }}>Risks</h3>
+              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{risks.length} {risks.length === 1 ? "item" : "items"}</span>
+            </div>
+            {risks.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>No risks</div>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Probability</th><th>Mitigation Target</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
+                </thead>
+                <tbody>
+                  {risks.map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{r.risk_title}</div>
+                        {r.risk_description && <div style={{ color: "var(--muted)", fontSize: 12 }}>{r.risk_description}</div>}
+                      </td>
+                      <td>{acctName(r.account_id)}</td>
+                      <td>{ownerName(r.risk_owner)}</td>
+                      <td><span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span></td>
+                      <td>{r.probability}</td>
+                      <td>
+                        <div>{fmt(r.target_mitigation_date)}</div>
+                        {r.status !== "Closed" && r.status !== "Mitigated" && <DeadlineChip deadline={r.target_mitigation_date} />}
+                      </td>
+                      <td><span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span></td>
+                      {hasInherited && <td>{r.source_dashboard_id !== id ? <SourceBadge name={r.source_dashboard_name} /> : null}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}
@@ -470,9 +631,6 @@ export default function DashboardDetailPage() {
                 <div className="form-row">
                   <input className="input" type="date" value={newTask.target_date} onChange={(e) => setNewTask({ ...newTask, target_date: e.target.value })} />
                   <input className="input" placeholder="SLA days" value={newTask.sla_days} onChange={(e) => setNewTask({ ...newTask, sla_days: e.target.value })} />
-                  <select className="select" value={newTask.rag_status} onChange={(e) => setNewTask({ ...newTask, rag_status: e.target.value })}>
-                    <option value="Green">Green</option><option value="Amber">Amber</option><option value="Red">Red</option>
-                  </select>
                 </div>
                 <textarea className="input" rows={2} placeholder="Task details *" value={newTask.item_details}
                   onChange={(e) => setNewTask({ ...newTask, item_details: e.target.value })}
@@ -492,73 +650,113 @@ export default function DashboardDetailPage() {
               <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No tasks yet.</div>
             )}
 
-            {ownTasks.map((t) => (
-              <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
-                {editingTaskId === t.id ? (
-                  <div style={{ padding: "14px 0" }}>
-                    <div className="form-row">
-                      <select className="select" value={taskEditForm.category_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, category_id: e.target.value })}>
-                        <option value="">Category</option>
-                        {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                      <select className="select" value={taskEditForm.account_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, account_id: e.target.value })}>
-                        <option value="">Account</option>
-                        {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                      </select>
-                      <select className="select" value={taskEditForm.owner_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, owner_id: e.target.value })}>
-                        <option value="">Owner</option>
-                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                    </div>
-                    <div className="form-row">
-                      <input className="input" type="date" value={taskEditForm.target_date} onChange={(e) => setTaskEditForm({ ...taskEditForm, target_date: e.target.value })} />
-                      <input className="input" placeholder="SLA days" value={taskEditForm.sla_days ?? ""} onChange={(e) => setTaskEditForm({ ...taskEditForm, sla_days: e.target.value })} />
-                      <select className="select" value={taskEditForm.rag_status} onChange={(e) => setTaskEditForm({ ...taskEditForm, rag_status: e.target.value })}>
-                        <option value="Green">Green</option><option value="Amber">Amber</option><option value="Red">Red</option>
-                      </select>
-                      <select className="select" value={taskEditForm.status} onChange={(e) => setTaskEditForm({ ...taskEditForm, status: e.target.value })}>
-                        <option value="Open">Open</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Closed Pending Approval">Closed Pending Approval</option>
-                        <option value="Closed Accepted">Closed Accepted</option>
-                      </select>
-                    </div>
-                    <textarea className="input" rows={3} value={taskEditForm.item_details}
-                      onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
-                      style={{ resize: "vertical", marginBottom: 10 }} />
-                    <div className="inline-actions">
-                      <label style={{ fontSize: 13, cursor: "pointer" }}>
-                        <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
-                        Publish
-                      </label>
-                      <button className="button" onClick={() => saveTask(t.id)}>Save</button>
-                      <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
-                      <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
-                      <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
-                      <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
-                    </div>
+            {/* Group own tasks by category */}
+            {categoryOptions.map((cat) => {
+              const catTasks = ownTasks.filter((t) => t.category_id === cat.id);
+              if (catTasks.length === 0) return null;
+              return (
+                <div key={cat.id}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", padding: "10px 0 4px", letterSpacing: "0.06em" }}>
+                    {cat.name}
                   </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
-                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: RAG_DOT[t.rag_status] ?? "#ccc", flexShrink: 0, marginTop: 4 }} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                          {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
-                          {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
+                  {catTasks.map((t) => (
+                    <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
+                      {editingTaskId === t.id ? (
+                        <div style={{ padding: "14px 0" }}>
+                          <div className="form-row">
+                            <select className="select" value={taskEditForm.category_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, category_id: e.target.value })}>
+                              <option value="">Category</option>
+                              {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                            <select className="select" value={taskEditForm.account_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, account_id: e.target.value })}>
+                              <option value="">Account</option>
+                              {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+                            </select>
+                            <select className="select" value={taskEditForm.owner_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, owner_id: e.target.value })}>
+                              <option value="">Owner</option>
+                              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-row">
+                            <input className="input" type="date" value={taskEditForm.target_date} onChange={(e) => setTaskEditForm({ ...taskEditForm, target_date: e.target.value })} />
+                            <input className="input" placeholder="SLA days" value={taskEditForm.sla_days ?? ""} onChange={(e) => setTaskEditForm({ ...taskEditForm, sla_days: e.target.value })} />
+                            <select className="select" value={taskEditForm.status} onChange={(e) => setTaskEditForm({ ...taskEditForm, status: e.target.value })}>
+                              <option value="Open">Open</option>
+                              <option value="In Progress">In Progress</option>
+                              <option value="Closed Pending Approval">Closed Pending Approval</option>
+                              <option value="Closed Accepted">Closed Accepted</option>
+                            </select>
+                          </div>
+                          <textarea className="input" rows={3} value={taskEditForm.item_details}
+                            onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
+                            style={{ resize: "vertical", marginBottom: 10 }} />
+                          <div className="inline-actions">
+                            <label style={{ fontSize: 13, cursor: "pointer" }}>
+                              <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
+                              Publish
+                            </label>
+                            <button className="button" onClick={() => saveTask(t.id)}>Save</button>
+                            <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
+                            <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
+                            <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
+                            <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                              {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                              {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <AgingChip targetDate={t.target_date} status={t.status} />
+                            <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                            <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
+                            <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+
+            {/* Uncategorised own tasks (category not matching any active category) */}
+            {(() => {
+              const activeCatIds = new Set(categoryOptions.map((c) => c.id));
+              const uncategorised = ownTasks.filter((t) => !activeCatIds.has(t.category_id));
+              if (uncategorised.length === 0) return null;
+              return (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", padding: "10px 0 4px", letterSpacing: "0.06em" }}>
+                    Uncategorised
+                  </div>
+                  {uncategorised.map((t) => (
+                    <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                            {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                            {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <AgingChip targetDate={t.target_date} status={t.status} />
+                          <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                          <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
+                          <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                      <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
-                      <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  ))}
+                </div>
+              );
+            })()}
 
             {inheritedTasks.length > 0 && (
               <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
@@ -568,18 +766,16 @@ export default function DashboardDetailPage() {
                 {inheritedTasks.map((t) => (
                   <div key={t.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
-                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: RAG_DOT[t.rag_status] ?? "#ccc", flexShrink: 0, marginTop: 4 }} />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                            {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
-                            {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
-                          </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                          {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                          {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{t.source_dashboard_name}</span>
+                        <AgingChip targetDate={t.target_date} status={t.status} />
+                        <SourceBadge name={t.source_dashboard_name} />
                         <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
                       </div>
                     </div>
@@ -694,6 +890,7 @@ export default function DashboardDetailPage() {
                       {r.risk_description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{r.risk_description}</div>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      {r.status !== "Closed" && r.status !== "Mitigated" && <DeadlineChip deadline={r.target_mitigation_date} />}
                       <span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span>
                       <span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span>
                       <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditRisk(r)}>Edit</button>
@@ -721,7 +918,8 @@ export default function DashboardDetailPage() {
                         {r.risk_description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{r.risk_description}</div>}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{r.source_dashboard_name}</span>
+                        {r.status !== "Closed" && r.status !== "Mitigated" && <DeadlineChip deadline={r.target_mitigation_date} />}
+                        <SourceBadge name={r.source_dashboard_name} />
                         <span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span>
                         <span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span>
                       </div>
@@ -825,6 +1023,7 @@ export default function DashboardDetailPage() {
                       {d.decision_context && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{d.decision_context}</div>}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
                       <span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span>
                       <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditDecision(d)}>Edit</button>
                       <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteDecision(d.id)}>Delete</button>
@@ -852,7 +1051,8 @@ export default function DashboardDetailPage() {
                         {d.decision_context && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{d.decision_context}</div>}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{d.source_dashboard_name}</span>
+                        {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
+                        <SourceBadge name={d.source_dashboard_name} />
                         <span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span>
                       </div>
                     </div>

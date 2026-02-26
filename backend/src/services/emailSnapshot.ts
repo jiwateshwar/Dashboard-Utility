@@ -41,14 +41,13 @@ export function buildEml(params: { dashboardName: string; date: string; content:
         <h3 style="margin:16px 0 8px;">Executive Summary</h3>
         <ul style="margin:0 0 16px;color:#1f2937;">
           <li>Tasks: ${content.summary.tasks.total} (Open ${content.summary.tasks.open}, In Progress ${content.summary.tasks.inProgress})</li>
-          <li>Risks: ${content.summary.risks.total} (Red ${content.summary.risks.red})</li>
+          <li>Risks: ${content.summary.risks.total} (Critical ${content.summary.risks.red})</li>
           <li>Decisions: ${content.summary.decisions.total} (Pending ${content.summary.decisions.pending})</li>
         </ul>
         <h3 style="margin:16px 0 8px;">Open Tasks</h3>
         ${table(content.openTasks || content.tasks, [
           { key: "item_details", label: "Task" },
           { key: "status", label: "Status" },
-          { key: "rag_status", label: "RAG" },
           { key: "owner_name", label: "Owner" },
           { key: "target_date", label: "Target Date" }
         ])}

@@ -13,7 +13,8 @@ export default function TeamPage() {
   if (!data) return <div>Loading...</div>;
 
   const filteredTasks = data.tasks.filter((t: any) => {
-    if (showRed && t.rag_status !== "Red") return false;
+    const closed = ["Closed Accepted", "Closed Pending Approval"];
+    if (showRed && (!t.target_date || closed.includes(t.status) || new Date(t.target_date).getTime() >= Date.now())) return false;
     if (showOverdue && t.target_date) {
       return new Date(t.target_date).getTime() < Date.now();
     }
@@ -41,7 +42,7 @@ export default function TeamPage() {
           <input type="checkbox" checked={showOverdue} onChange={(e) => setShowOverdue(e.target.checked)} /> Overdue Only
         </label>
         <label className="badge">
-          <input type="checkbox" checked={showRed} onChange={(e) => setShowRed(e.target.checked)} /> Red Only
+          <input type="checkbox" checked={showRed} onChange={(e) => setShowRed(e.target.checked)} /> Overdue Tasks / Critical Risks
         </label>
       </div>
       <div className="grid two">

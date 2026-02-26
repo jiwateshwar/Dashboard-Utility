@@ -123,6 +123,13 @@ router.post("/", async (req, res) => {
       [id, uid]
     );
   }
+  // Auto-seed fixed categories for every new dashboard
+  await query(
+    `INSERT INTO categories (id, dashboard_id, name, is_active) VALUES
+     (gen_random_uuid(), $1, 'Highlights', true),
+     (gen_random_uuid(), $1, 'Lowlights', true)`,
+    [id]
+  );
   res.json({ id });
 });
 
@@ -247,7 +254,7 @@ router.get("/:id/summary", async (req, res) => {
        UNION ALL
        SELECT d.id FROM dashboards d JOIN children c ON d.parent_dashboard_id = c.id
      )
-     SELECT status, rag_status, created_at FROM tasks
+     SELECT status, target_date, created_at FROM tasks
      WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
        AND (dashboard_id = $1 OR publish_flag = true)`,
     [id]
@@ -275,10 +282,11 @@ router.get("/:id/summary", async (req, res) => {
     [id]
   );
 
+  const closedStatuses = ["Closed Accepted", "Closed Pending Approval"];
   const taskStats = {
     open: tasks.rows.filter((t) => t.status === "Open").length,
     inProgress: tasks.rows.filter((t) => t.status === "In Progress").length,
-    red: tasks.rows.filter((t) => t.rag_status === "Red").length,
+    overdue: tasks.rows.filter((t) => !closedStatuses.includes(t.status) && t.target_date && dayjs().isAfter(dayjs(t.target_date))).length,
     pendingApproval: tasks.rows.filter((t) => t.status === "Closed Pending Approval").length
   };
   const riskStats = {
@@ -292,10 +300,9 @@ router.get("/:id/summary", async (req, res) => {
   };
 
   const totalItems = taskStats.open + taskStats.inProgress + riskStats.totalActive + decisionStats.pending;
-  const redCount = taskStats.red + riskStats.red;
-  const overdueCount = riskStats.overdueMitigations + decisionStats.overdue;
+  const overdueCount = taskStats.overdue + riskStats.overdueMitigations + decisionStats.overdue;
   const agingTasks = tasks.rows.filter((t) => dayjs().diff(dayjs(t.created_at), "day") > 20).length;
-  const riskFactor = redCount + overdueCount + agingTasks;
+  const riskFactor = riskStats.red + overdueCount + agingTasks;
   const healthScore = totalItems === 0 ? 100 : Math.max(0, 100 - Math.round((riskFactor / totalItems) * 100));
 
   res.json({ taskStats, riskStats, decisionStats, healthScore });

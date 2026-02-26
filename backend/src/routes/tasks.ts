@@ -66,7 +66,6 @@ router.post("/", async (req, res) => {
     owner_id,
     target_date,
     sla_days,
-    rag_status,
     publish_flag
   } = req.body as any;
 
@@ -98,9 +97,9 @@ router.post("/", async (req, res) => {
   const id = uuid();
   await query(
     `INSERT INTO tasks
-     (id, dashboard_id, category_id, account_id, item_details, owner_id, created_by, target_date, sla_days, status, rag_status, publish_flag)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Open', $10, $11)`,
-    [id, dashboard_id, category_id, account_id, item_details, owner_id, userId, target_date, sla_days || null, rag_status || "Green", publish_flag ?? false]
+     (id, dashboard_id, category_id, account_id, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Open', $10)`,
+    [id, dashboard_id, category_id, account_id, item_details, owner_id, userId, target_date, sla_days || null, publish_flag ?? false]
   );
 
   res.json({ id });
@@ -109,7 +108,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const { item_details, owner_id, target_date, rag_status, publish_flag, status } = req.body as any;
+  const { item_details, owner_id, target_date, publish_flag, status } = req.body as any;
 
   const task = await query(`SELECT dashboard_id, owner_id, created_by, status FROM tasks WHERE id = $1`, [id]);
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -134,12 +133,11 @@ router.patch("/:id", async (req, res) => {
      SET item_details = COALESCE($2, item_details),
          owner_id = COALESCE($3, owner_id),
          target_date = COALESCE($4, target_date),
-         rag_status = COALESCE($5, rag_status),
-         publish_flag = COALESCE($6, publish_flag),
-         status = COALESCE($7, status),
+         publish_flag = COALESCE($5, publish_flag),
+         status = COALESCE($6, status),
          updated_at = now()
      WHERE id = $1`,
-    [id, item_details || null, owner_id || null, target_date || null, rag_status || null, publish_flag, status || null]
+    [id, item_details || null, owner_id || null, target_date || null, publish_flag, status || null]
   );
 
   await logAudit({ entityType: "Task", entityId: id, changedBy: userId, oldValue: task.rows[0], newValue: req.body });

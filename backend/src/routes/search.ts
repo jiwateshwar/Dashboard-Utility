@@ -9,7 +9,7 @@ router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;
-  const { q, dashboard_id, status, rag, aging_gt } = req.query as any;
+  const { q, dashboard_id, status, aging_gt } = req.query as any;
   if (!q) return res.status(400).json({ error: "q required" });
 
   const subordinates = await getSubordinateIds(userId);
@@ -27,9 +27,8 @@ router.get("/", async (req, res) => {
        AND (publish_flag = true OR owner_id = $3 OR created_by = $3 OR owner_id = ANY($4) OR created_by = ANY($4))
        AND (item_details ILIKE '%' || $1 || '%')
        AND ($5::text IS NULL OR status = $5)
-       AND ($6::text IS NULL OR rag_status = $6)
-       AND ($7::int IS NULL OR date_part('day', now() - created_at) > $7)`,
-    [q, dashboard_id || null, userId, subordinates, status || null, rag || null, aging_gt ? Number(aging_gt) : null]
+       AND ($6::int IS NULL OR date_part('day', now() - created_at) > $6)`,
+    [q, dashboard_id || null, userId, subordinates, status || null, aging_gt ? Number(aging_gt) : null]
   );
 
   const risks = await query(
