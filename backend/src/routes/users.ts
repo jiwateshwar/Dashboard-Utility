@@ -2,7 +2,7 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { getUserRole } from "../services/permission.js";
+import { getUserRole, isAdminRole } from "../services/permission.js";
 import { willCreateLoop } from "../services/hierarchy.js";
 
 const router = Router();
@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
-  if (role !== "Admin") {
+  if (!isAdminRole(role)) {
     return res.status(403).json({ error: "Admin only" });
   }
   const { name, email, manager_id, level, role: userRole } = req.body as any;
@@ -49,7 +49,7 @@ router.post("/", async (req, res) => {
 
 router.patch("/:id", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
-  if (role !== "Admin") {
+  if (!isAdminRole(role)) {
     return res.status(403).json({ error: "Admin only" });
   }
   const { id } = req.params;

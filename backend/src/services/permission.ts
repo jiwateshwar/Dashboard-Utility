@@ -8,6 +8,10 @@ export async function getUserRole(userId: string) {
   return rows[0]?.role || "User";
 }
 
+export function isAdminRole(role: string) {
+  return role === "Admin" || role === "SuperAdmin";
+}
+
 export async function isDashboardOwner(userId: string, dashboardId: string) {
   const { rows } = await query(
     `SELECT 1 FROM dashboard_owners WHERE dashboard_id = $1 AND user_id = $2
@@ -28,7 +32,7 @@ export async function hasDashboardAccess(userId: string, dashboardId: string) {
 
 export async function canEditDashboard(userId: string, dashboardId: string) {
   const role = await getUserRole(userId);
-  if (role === "Admin") return true;
+  if (isAdminRole(role)) return true;
   const { rows } = await query(
     `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_edit = true`,
     [dashboardId, userId]

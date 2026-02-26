@@ -13,6 +13,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", role: "User" });
+  const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; manager_id: string; role: string; is_active: boolean } | null>(null);
   const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[], parent_dashboard_id: "" });
   const [editingDashboard, setEditingDashboard] = useState<{ id: string; name: string; description: string; ownerIds: string[]; parent_dashboard_id: string } | null>(null);
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
@@ -89,6 +90,19 @@ export default function AdminPage() {
     try {
       await api("/users", { method: "POST", body: JSON.stringify({ name: newUser.name, email: newUser.email, manager_id: newUser.manager_id || null, role: newUser.role }) });
       setNewUser({ name: "", email: "", manager_id: "", role: "User" });
+      await loadAll();
+    } catch (err: any) { setError(err.message); }
+  }
+
+  async function handleUpdateUser() {
+    if (!editingUser) return;
+    setError(null);
+    try {
+      await api(`/users/${editingUser.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: editingUser.name, manager_id: editingUser.manager_id || null, role: editingUser.role, is_active: editingUser.is_active })
+      });
+      setEditingUser(null);
       await loadAll();
     } catch (err: any) { setError(err.message); }
   }
@@ -207,20 +221,88 @@ export default function AdminPage() {
       </div>
 
       {tab === "users" && (
-        <div className="card">
-          <h3>Create User (Admin)</h3>
-          <div className="form-row">
-            <input className="input" placeholder="Name" value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} />
-            <input className="input" placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
-            <select className="select" value={newUser.manager_id} onChange={(e) => setNewUser({ ...newUser, manager_id: e.target.value })}>
-              <option value="">No Manager</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-            <select className="select" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
-              <option value="User">User</option><option value="Admin">Admin</option>
-            </select>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="card">
+            <h3 style={{ margin: "0 0 12px 0" }}>Create User</h3>
+            <div className="form-row">
+              <input className="input" placeholder="Name" value={newUser.name} onChange={(e) => setNewUser({ ...newUser, name: e.target.value })} />
+              <input className="input" placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+              <select className="select" value={newUser.manager_id} onChange={(e) => setNewUser({ ...newUser, manager_id: e.target.value })}>
+                <option value="">No Manager</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+              <select className="select" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
+                <option value="User">User</option>
+                <option value="Admin">Admin</option>
+                <option value="SuperAdmin">SuperAdmin</option>
+              </select>
+            </div>
+            <button className="button" onClick={handleCreateUser}>Create User</button>
           </div>
-          <button className="button" onClick={handleCreateUser}>Create User</button>
+
+          <div className="card">
+            <h3 style={{ margin: "0 0 12px 0" }}>All Users</h3>
+
+            {editingUser && (
+              <div className="inline-create-panel" style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>Editing: {editingUser.email}</div>
+                <div className="form-row">
+                  <input className="input" placeholder="Name" value={editingUser.name}
+                    onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} />
+                  <select className="select" value={editingUser.manager_id}
+                    onChange={(e) => setEditingUser({ ...editingUser, manager_id: e.target.value })}>
+                    <option value="">No Manager</option>
+                    {users.filter((u) => u.id !== editingUser.id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  <select className="select" value={editingUser.role}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}>
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                    <option value="SuperAdmin">SuperAdmin</option>
+                  </select>
+                  <select className="select" value={editingUser.is_active ? "active" : "inactive"}
+                    onChange={(e) => setEditingUser({ ...editingUser, is_active: e.target.value === "active" })}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                <div className="inline-actions">
+                  <button className="button" onClick={handleUpdateUser}>Save Changes</button>
+                  <button className="button secondary" onClick={() => setEditingUser(null)}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            <table className="table">
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Manager</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} style={editingUser?.id === u.id ? { background: "#eef6ff" } : {}}>
+                    <td style={{ fontWeight: 500 }}>{u.name}</td>
+                    <td style={{ color: "var(--muted)" }}>{u.email}</td>
+                    <td style={{ color: "var(--muted)" }}>{users.find((m) => m.id === u.manager_id)?.name || "—"}</td>
+                    <td>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600,
+                        background: u.role === "SuperAdmin" ? "rgba(139,92,246,0.12)" : u.role === "Admin" ? "rgba(29,99,237,0.10)" : "rgba(0,0,0,0.06)",
+                        color: u.role === "SuperAdmin" ? "#7c3aed" : u.role === "Admin" ? "#1d63ed" : "var(--muted)" }}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td><span className="badge">{u.is_active !== false ? "Active" : "Inactive"}</span></td>
+                    <td>
+                      <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }}
+                        onClick={() => setEditingUser({ id: u.id, name: u.name, email: u.email, manager_id: u.manager_id || "", role: u.role, is_active: u.is_active !== false })}>
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No users</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

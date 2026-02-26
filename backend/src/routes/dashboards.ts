@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import dayjs from "dayjs";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { getUserRole, isDashboardOwner, hasDashboardAccess } from "../services/permission.js";
+import { getUserRole, isDashboardOwner, hasDashboardAccess, isAdminRole } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -91,14 +91,14 @@ router.get("/", async (req, res) => {
        UNION
        SELECT dashboard_id FROM dashboard_access WHERE user_id = $2
      )`,
-    [role === "Admin", userId]
+    [isAdminRole(role), userId]
   );
   res.json(rows);
 });
 
 router.post("/", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
-  if (role !== "Admin") {
+  if (!isAdminRole(role)) {
     return res.status(403).json({ error: "Admin only" });
   }
   const { name, description, owner_ids, parent_dashboard_id } = req.body as any;
@@ -139,7 +139,7 @@ router.get("/:id", async (req, res) => {
        UNION
        SELECT dashboard_id FROM dashboard_access WHERE user_id = $3
      ))`,
-    [id, role === "Admin", userId]
+    [id, isAdminRole(role), userId]
   );
   if (!rows[0]) return res.status(404).json({ error: "Not found" });
   res.json(rows[0]);
@@ -149,7 +149,7 @@ router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
-  if (role !== "Admin" && !(await isDashboardOwner(userId, id))) {
+  if (!isAdminRole(role) && !(await isDashboardOwner(userId, id))) {
     return res.status(403).json({ error: "Not allowed" });
   }
   const { name, description, is_active, parent_dashboard_id } = req.body as any;
@@ -191,7 +191,7 @@ router.get("/:id/owners", async (req, res) => {
   const userId = req.session.userId!;
   const isOwner = await isDashboardOwner(userId, id);
   const role = await getUserRole(userId);
-  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Not allowed" });
+  if (!isOwner && !isAdminRole(role)) return res.status(403).json({ error: "Not allowed" });
 
   const { rows } = await query(
     `SELECT dbo.user_id, u.name, u.email
@@ -210,7 +210,7 @@ router.put("/:id/owners", async (req, res) => {
   const userId = req.session.userId!;
   const isOwner = await isDashboardOwner(userId, id);
   const role = await getUserRole(userId);
-  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Not allowed" });
+  if (!isOwner && !isAdminRole(role)) return res.status(403).json({ error: "Not allowed" });
 
   const { owner_ids } = req.body as any;
   if (!Array.isArray(owner_ids) || owner_ids.length === 0) {
@@ -237,7 +237,7 @@ router.get("/:id/summary", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
-  const canView = role === "Admin" || (await hasDashboardAccess(userId, id)) || (await isDashboardOwner(userId, id));
+  const canView = isAdminRole(role) || (await hasDashboardAccess(userId, id)) || (await isDashboardOwner(userId, id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
   // Collect this dashboard + all descendants (max 2 levels down = 3 total)
@@ -308,7 +308,7 @@ router.post("/:id/access", async (req, res) => {
   const userId = req.session.userId!;
   const isOwner = await isDashboardOwner(userId, id);
   const role = await getUserRole(userId);
-  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Not allowed" });
+  if (!isOwner && !isAdminRole(role)) return res.status(403).json({ error: "Not allowed" });
   const { target_user_id, can_view, can_edit } = req.body as any;
   if (!target_user_id) return res.status(400).json({ error: "Missing target_user_id" });
   await query(
@@ -326,7 +326,7 @@ router.get("/:id/access", async (req, res) => {
   const userId = req.session.userId!;
   const isOwner = await isDashboardOwner(userId, id);
   const role = await getUserRole(userId);
-  if (!isOwner && role !== "Admin") return res.status(403).json({ error: "Owners only" });
+  if (!isOwner && !isAdminRole(role)) return res.status(403).json({ error: "Owners only" });
 
   const { rows } = await query(
     `SELECT da.dashboard_id, da.user_id, da.can_view, da.can_edit, u.name, u.email
