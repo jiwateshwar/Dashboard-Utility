@@ -33,7 +33,10 @@ async function loadRules(dashboardId: string): Promise<Rule[]> {
   return rows as any[];
 }
 
-async function runDefaultRules(dash: { id: string; primary_owner_id: string }) {
+async function runDefaultRules(
+  dash: { id: string; primary_owner_id: string },
+  userMap: Map<string, { manager_id: string | null }>
+) {
   const tasks = await query(
     `SELECT t.id, t.owner_id, t.created_at
      FROM tasks t
@@ -43,11 +46,7 @@ async function runDefaultRules(dash: { id: string; primary_owner_id: string }) {
   for (const task of tasks.rows) {
     const ageDays = dayjs().diff(dayjs(task.created_at), "day");
     if (ageDays > 20) {
-      const manager = await query(
-        `SELECT manager_id FROM users WHERE id = $1`,
-        [task.owner_id]
-      );
-      const managerId = manager.rows[0]?.manager_id;
+      const managerId = userMap.get(task.owner_id)?.manager_id;
       if (managerId) {
         await notify(managerId, dash.id, "Task", task.id, "Task aging > 20 days", `Task ${task.id} aging ${ageDays} days`);
       }
@@ -76,7 +75,11 @@ async function runDefaultRules(dash: { id: string; primary_owner_id: string }) {
   }
 }
 
-async function runRule(dash: { id: string; primary_owner_id: string }, rule: Rule) {
+async function runRule(
+  dash: { id: string; primary_owner_id: string },
+  rule: Rule,
+  userMap: Map<string, { manager_id: string | null }>
+) {
   const condition = rule.condition_json || {};
   if (condition.type === "task_aging_gt") {
     const days = Number(condition.days || 0);
@@ -92,8 +95,7 @@ async function runRule(dash: { id: string; primary_owner_id: string }, rule: Rul
       if (ageDays > days) {
         let notifyUser = dash.primary_owner_id;
         if (notifyTarget === "manager") {
-          const manager = await query(`SELECT manager_id FROM users WHERE id = $1`, [task.owner_id]);
-          notifyUser = manager.rows[0]?.manager_id || dash.primary_owner_id;
+          notifyUser = userMap.get(task.owner_id)?.manager_id || dash.primary_owner_id;
         }
         await notify(notifyUser, dash.id, "Task", task.id, rule.rule_name, `Task ${task.id} aging ${ageDays} days`);
       }
@@ -132,14 +134,20 @@ export async function runEscalations() {
     `SELECT id, primary_owner_id FROM dashboards WHERE is_active = true`
   );
 
+  // Pre-fetch all users once to avoid per-task N+1 manager lookups
+  const allUsers = await query(`SELECT id, manager_id FROM users`);
+  const userMap = new Map<string, { manager_id: string | null }>(
+    allUsers.rows.map((u) => [u.id, { manager_id: u.manager_id }])
+  );
+
   for (const dash of dashboards.rows) {
     const rules = await loadRules(dash.id);
     if (rules.length === 0) {
-      await runDefaultRules(dash as any);
+      await runDefaultRules(dash as any, userMap);
       continue;
     }
     for (const rule of rules) {
-      await runRule(dash as any, rule);
+      await runRule(dash as any, rule, userMap);
     }
   }
 }

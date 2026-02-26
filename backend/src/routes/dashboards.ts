@@ -247,61 +247,60 @@ router.get("/:id/summary", async (req, res) => {
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, id)) || (await isDashboardOwner(userId, id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
-  // Collect this dashboard + all descendants (max 2 levels down = 3 total)
-  const tasks = await query(
+  // Single query with the recursive CTE computed once, then used across tasks/risks/decisions
+  const { rows: raw } = await query(
     `WITH RECURSIVE children AS (
        SELECT id FROM dashboards WHERE id = $1
        UNION ALL
        SELECT d.id FROM dashboards d JOIN children c ON d.parent_dashboard_id = c.id
+     ),
+     t AS (
+       SELECT 'task' AS kind, status, target_date::text AS deadline, created_at, NULL::text AS impact_level
+       FROM tasks
+       WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
+         AND (dashboard_id = $1 OR publish_flag = true)
+     ),
+     r AS (
+       SELECT 'risk' AS kind, status, target_mitigation_date::text AS deadline, NULL::timestamptz AS created_at, impact_level
+       FROM risks
+       WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
+         AND (dashboard_id = $1 OR publish_flag = true)
+     ),
+     dec AS (
+       SELECT 'decision' AS kind, status, decision_deadline::text AS deadline, NULL::timestamptz AS created_at, NULL::text AS impact_level
+       FROM decisions
+       WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
+         AND (dashboard_id = $1 OR publish_flag = true)
      )
-     SELECT status, target_date, created_at FROM tasks
-     WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
-       AND (dashboard_id = $1 OR publish_flag = true)`,
-    [id]
-  );
-  const risks = await query(
-    `WITH RECURSIVE children AS (
-       SELECT id FROM dashboards WHERE id = $1
-       UNION ALL
-       SELECT d.id FROM dashboards d JOIN children c ON d.parent_dashboard_id = c.id
-     )
-     SELECT status, impact_level, probability, target_mitigation_date FROM risks
-     WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
-       AND (dashboard_id = $1 OR publish_flag = true)`,
-    [id]
-  );
-  const decisions = await query(
-    `WITH RECURSIVE children AS (
-       SELECT id FROM dashboards WHERE id = $1
-       UNION ALL
-       SELECT d.id FROM dashboards d JOIN children c ON d.parent_dashboard_id = c.id
-     )
-     SELECT status, decision_deadline FROM decisions
-     WHERE dashboard_id IN (SELECT id FROM children) AND is_archived = false
-       AND (dashboard_id = $1 OR publish_flag = true)`,
+     SELECT * FROM t UNION ALL SELECT * FROM r UNION ALL SELECT * FROM dec`,
     [id]
   );
 
+  const taskRows = raw.filter((r) => r.kind === "task");
+  const riskRows = raw.filter((r) => r.kind === "risk");
+  const decisionRows = raw.filter((r) => r.kind === "decision");
+  const now = dayjs();
+
   const closedStatuses = ["Closed Accepted", "Closed Pending Approval"];
   const taskStats = {
-    open: tasks.rows.filter((t) => t.status === "Open").length,
-    inProgress: tasks.rows.filter((t) => t.status === "In Progress").length,
-    overdue: tasks.rows.filter((t) => !closedStatuses.includes(t.status) && t.target_date && dayjs().isAfter(dayjs(t.target_date))).length,
-    pendingApproval: tasks.rows.filter((t) => t.status === "Closed Pending Approval").length
+    open: taskRows.filter((t) => t.status === "Open").length,
+    inProgress: taskRows.filter((t) => t.status === "In Progress").length,
+    overdue: taskRows.filter((t) => !closedStatuses.includes(t.status) && t.deadline && now.isAfter(dayjs(t.deadline))).length,
+    pendingApproval: taskRows.filter((t) => t.status === "Closed Pending Approval").length
   };
   const riskStats = {
-    totalActive: risks.rows.filter((r) => r.status !== "Closed").length,
-    red: risks.rows.filter((r) => r.impact_level === "Critical").length,
-    overdueMitigations: risks.rows.filter((r) => r.status !== "Closed" && r.target_mitigation_date && dayjs().isAfter(dayjs(r.target_mitigation_date))).length
+    totalActive: riskRows.filter((r) => r.status !== "Closed").length,
+    red: riskRows.filter((r) => r.impact_level === "Critical").length,
+    overdueMitigations: riskRows.filter((r) => r.status !== "Closed" && r.deadline && now.isAfter(dayjs(r.deadline))).length
   };
   const decisionStats = {
-    pending: decisions.rows.filter((d) => d.status === "Pending").length,
-    overdue: decisions.rows.filter((d) => d.status === "Pending" && dayjs().isAfter(dayjs(d.decision_deadline))).length
+    pending: decisionRows.filter((d) => d.status === "Pending").length,
+    overdue: decisionRows.filter((d) => d.status === "Pending" && d.deadline && now.isAfter(dayjs(d.deadline))).length
   };
 
   const totalItems = taskStats.open + taskStats.inProgress + riskStats.totalActive + decisionStats.pending;
   const overdueCount = taskStats.overdue + riskStats.overdueMitigations + decisionStats.overdue;
-  const agingTasks = tasks.rows.filter((t) => dayjs().diff(dayjs(t.created_at), "day") > 20).length;
+  const agingTasks = taskRows.filter((t) => now.diff(dayjs(t.created_at), "day") > 20).length;
   const riskFactor = riskStats.red + overdueCount + agingTasks;
   const healthScore = totalItems === 0 ? 100 : Math.max(0, 100 - Math.round((riskFactor / totalItems) * 100));
 
