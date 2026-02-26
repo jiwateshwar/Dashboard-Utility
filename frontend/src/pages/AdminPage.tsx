@@ -13,8 +13,8 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", level: "", role: "User" });
-  const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[] });
-  const [editingDashboard, setEditingDashboard] = useState<{ id: string; name: string; description: string; ownerIds: string[] } | null>(null);
+  const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[], parent_dashboard_id: "" });
+  const [editingDashboard, setEditingDashboard] = useState<{ id: string; name: string; description: string; ownerIds: string[]; parent_dashboard_id: string } | null>(null);
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
   const [groupAssign, setGroupAssign] = useState({ dashboard_id: "", group_id: "" });
   const [newAccount, setNewAccount] = useState({ account_name: "", account_type: "", region: "" });
@@ -97,8 +97,8 @@ export default function AdminPage() {
     setError(null);
     if (newDashboard.owner_ids.length === 0) { setError("At least one owner is required"); return; }
     try {
-      await api("/dashboards", { method: "POST", body: JSON.stringify({ name: newDashboard.name, description: newDashboard.description, owner_ids: newDashboard.owner_ids }) });
-      setNewDashboard({ name: "", description: "", owner_ids: [] });
+      await api("/dashboards", { method: "POST", body: JSON.stringify({ name: newDashboard.name, description: newDashboard.description, owner_ids: newDashboard.owner_ids, parent_dashboard_id: newDashboard.parent_dashboard_id || null }) });
+      setNewDashboard({ name: "", description: "", owner_ids: [], parent_dashboard_id: "" });
       await loadAll();
     } catch (err: any) { setError(err.message); }
   }
@@ -108,7 +108,7 @@ export default function AdminPage() {
     setError(null);
     if (editingDashboard.ownerIds.length === 0) { setError("At least one owner is required"); return; }
     try {
-      await api(`/dashboards/${editingDashboard.id}`, { method: "PATCH", body: JSON.stringify({ name: editingDashboard.name, description: editingDashboard.description }) });
+      await api(`/dashboards/${editingDashboard.id}`, { method: "PATCH", body: JSON.stringify({ name: editingDashboard.name, description: editingDashboard.description, parent_dashboard_id: editingDashboard.parent_dashboard_id || null }) });
       await api(`/dashboards/${editingDashboard.id}/owners`, { method: "PUT", body: JSON.stringify({ owner_ids: editingDashboard.ownerIds }) });
       setEditingDashboard(null);
       await loadAll();
@@ -131,7 +131,7 @@ export default function AdminPage() {
     } catch {
       ownerIds = d.primary_owner_id ? [d.primary_owner_id] : [];
     }
-    setEditingDashboard({ id: d.id, name: d.name, description: d.description || "", ownerIds });
+    setEditingDashboard({ id: d.id, name: d.name, description: d.description || "", ownerIds, parent_dashboard_id: d.parent_dashboard_id || "" });
   }
 
   async function handleCreateGroup() {
@@ -232,6 +232,10 @@ export default function AdminPage() {
             <div className="form-row">
               <input className="input" placeholder="Name" value={newDashboard.name} onChange={(e) => setNewDashboard({ ...newDashboard, name: e.target.value })} />
               <input className="input" placeholder="Description" value={newDashboard.description} onChange={(e) => setNewDashboard({ ...newDashboard, description: e.target.value })} />
+              <select className="select" value={newDashboard.parent_dashboard_id} onChange={(e) => setNewDashboard({ ...newDashboard, parent_dashboard_id: e.target.value })}>
+                <option value="">No Parent (Top Level)</option>
+                {dashboards.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
             </div>
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Owners</div>
@@ -255,6 +259,11 @@ export default function AdminPage() {
                     onChange={(e) => setEditingDashboard({ ...editingDashboard, name: e.target.value })} />
                   <input className="input" placeholder="Description" value={editingDashboard.description}
                     onChange={(e) => setEditingDashboard({ ...editingDashboard, description: e.target.value })} />
+                  <select className="select" value={editingDashboard.parent_dashboard_id}
+                    onChange={(e) => setEditingDashboard({ ...editingDashboard, parent_dashboard_id: e.target.value })}>
+                    <option value="">No Parent (Top Level)</option>
+                    {dashboards.filter((d) => d.id !== editingDashboard.id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
                 </div>
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Owners</div>
@@ -273,7 +282,7 @@ export default function AdminPage() {
 
             <table className="table">
               <thead>
-                <tr><th>Name</th><th>Description</th><th>Owners</th><th>Status</th><th>Actions</th></tr>
+                <tr><th>Name</th><th>Parent</th><th>Description</th><th>Owners</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
                 {dashboards.map((d) => {
@@ -281,6 +290,7 @@ export default function AdminPage() {
                   return (
                     <tr key={d.id} style={editingDashboard?.id === d.id ? { background: "#eef6ff" } : {}}>
                       <td style={{ fontWeight: 500 }}>{d.name}</td>
+                      <td style={{ color: "var(--muted)" }}>{d.parent_dashboard_name || "—"}</td>
                       <td style={{ color: "var(--muted)" }}>{d.description || "—"}</td>
                       <td>{owners.length > 0 ? owners.map((o: any) => o.name).join(", ") : <span style={{ color: "var(--muted)" }}>—</span>}</td>
                       <td><span className="badge">{d.is_active !== false ? "Active" : "Inactive"}</span></td>
@@ -294,7 +304,7 @@ export default function AdminPage() {
                   );
                 })}
                 {dashboards.length === 0 && (
-                  <tr><td colSpan={5} style={{ color: "var(--muted)", textAlign: "center" }}>No dashboards</td></tr>
+                  <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No dashboards</td></tr>
                 )}
               </tbody>
             </table>

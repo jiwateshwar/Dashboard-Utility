@@ -253,15 +253,35 @@ export default function DashboardDetailPage() {
 
   if (!id) return null;
 
+  // Split own vs inherited (from child dashboards)
+  const ownTasks = tasks.filter((t) => t.source_dashboard_id === id);
+  const inheritedTasks = tasks.filter((t) => t.source_dashboard_id !== id);
+  const ownRisks = risks.filter((r) => r.source_dashboard_id === id);
+  const inheritedRisks = risks.filter((r) => r.source_dashboard_id !== id);
+  const ownDecisions = decisions.filter((d) => d.source_dashboard_id === id);
+  const inheritedDecisions = decisions.filter((d) => d.source_dashboard_id !== id);
+
+  const hasInherited = inheritedTasks.length > 0 || inheritedRisks.length > 0 || inheritedDecisions.length > 0;
+
   return (
     <div className="dashboard-shell">
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
 
       {/* Header */}
       <div className="dashboard-header">
+        {dashboard?.parent_dashboard_name && (
+          <div style={{ fontSize: 11, color: "rgba(219,234,254,0.65)", marginBottom: 4 }}>
+            ↑ Reports to: {dashboard.parent_dashboard_name}
+          </div>
+        )}
         <h1>{dashboard?.name ?? "Loading…"}</h1>
         {dashboard?.description && (
           <div className="dashboard-subtitle">{dashboard.description}</div>
+        )}
+        {hasInherited && (
+          <div style={{ fontSize: 11, color: "rgba(219,234,254,0.65)", marginTop: 6 }}>
+            Includes inherited items from {[...new Set([...inheritedTasks, ...inheritedRisks, ...inheritedDecisions].map((x) => x.source_dashboard_name))].join(", ")}
+          </div>
         )}
       </div>
 
@@ -334,7 +354,7 @@ export default function DashboardDetailPage() {
             <h3 style={{ margin: "0 0 12px 0" }}>Tasks</h3>
             <table className="table">
               <thead>
-                <tr><th>Task</th><th>Category</th><th>Account</th><th>Owner</th><th>Target</th><th>RAG</th><th>Status</th></tr>
+                <tr><th>Task</th><th>Category</th><th>Account</th><th>Owner</th><th>Target</th><th>RAG</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
               </thead>
               <tbody>
                 {tasks.map((t) => (
@@ -346,9 +366,10 @@ export default function DashboardDetailPage() {
                     <td>{fmt(t.target_date)}</td>
                     <td><span className={`tag ${RAG_CLASS[t.rag_status] ?? "green"}`}>{t.rag_status}</span></td>
                     <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
+                    {hasInherited && <td>{t.source_dashboard_id !== id ? <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{t.source_dashboard_name}</span> : null}</td>}
                   </tr>
                 ))}
-                {tasks.length === 0 && <tr><td colSpan={7} style={{ color: "var(--muted)", textAlign: "center" }}>No tasks</td></tr>}
+                {tasks.length === 0 && <tr><td colSpan={hasInherited ? 8 : 7} style={{ color: "var(--muted)", textAlign: "center" }}>No tasks</td></tr>}
               </tbody>
             </table>
           </div>
@@ -358,7 +379,7 @@ export default function DashboardDetailPage() {
             <h3 style={{ margin: "0 0 12px 0" }}>Risks</h3>
             <table className="table">
               <thead>
-                <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Probability</th><th>Target</th><th>Status</th></tr>
+                <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Probability</th><th>Target</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
               </thead>
               <tbody>
                 {risks.map((r) => (
@@ -373,9 +394,10 @@ export default function DashboardDetailPage() {
                     <td>{r.probability}</td>
                     <td>{fmt(r.target_mitigation_date)}</td>
                     <td><span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span></td>
+                    {hasInherited && <td>{r.source_dashboard_id !== id ? <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{r.source_dashboard_name}</span> : null}</td>}
                   </tr>
                 ))}
-                {risks.length === 0 && <tr><td colSpan={7} style={{ color: "var(--muted)", textAlign: "center" }}>No risks</td></tr>}
+                {risks.length === 0 && <tr><td colSpan={hasInherited ? 8 : 7} style={{ color: "var(--muted)", textAlign: "center" }}>No risks</td></tr>}
               </tbody>
             </table>
           </div>
@@ -385,7 +407,7 @@ export default function DashboardDetailPage() {
             <h3 style={{ margin: "0 0 12px 0" }}>Decisions</h3>
             <table className="table">
               <thead>
-                <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Impact Area</th><th>Status</th></tr>
+                <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Impact Area</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
               </thead>
               <tbody>
                 {decisions.map((d) => (
@@ -399,9 +421,10 @@ export default function DashboardDetailPage() {
                     <td>{fmt(d.decision_deadline)}</td>
                     <td>{d.impact_area || "—"}</td>
                     <td><span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span></td>
+                    {hasInherited && <td>{d.source_dashboard_id !== id ? <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{d.source_dashboard_name}</span> : null}</td>}
                   </tr>
                 ))}
-                {decisions.length === 0 && <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No decisions</td></tr>}
+                {decisions.length === 0 && <tr><td colSpan={hasInherited ? 7 : 6} style={{ color: "var(--muted)", textAlign: "center" }}>No decisions</td></tr>}
               </tbody>
             </table>
           </div>
@@ -465,11 +488,11 @@ export default function DashboardDetailPage() {
               </div>
             )}
 
-            {tasks.length === 0 && !showCreateTask && (
+            {ownTasks.length === 0 && !showCreateTask && inheritedTasks.length === 0 && (
               <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No tasks yet.</div>
             )}
 
-            {tasks.map((t) => (
+            {ownTasks.map((t) => (
               <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
                 {editingTaskId === t.id ? (
                   <div style={{ padding: "14px 0" }}>
@@ -536,6 +559,34 @@ export default function DashboardDetailPage() {
                 )}
               </div>
             ))}
+
+            {inheritedTasks.length > 0 && (
+              <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Inherited from child dashboards
+                </div>
+                {inheritedTasks.map((t) => (
+                  <div key={t.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: RAG_DOT[t.rag_status] ?? "#ccc", flexShrink: 0, marginTop: 4 }} />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                            {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                            {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{t.source_dashboard_name}</span>
+                        <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── RISKS ── */}
@@ -586,11 +637,11 @@ export default function DashboardDetailPage() {
               </div>
             )}
 
-            {risks.length === 0 && !showCreateRisk && (
+            {ownRisks.length === 0 && !showCreateRisk && inheritedRisks.length === 0 && (
               <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No risks yet.</div>
             )}
 
-            {risks.map((r) => (
+            {ownRisks.map((r) => (
               <div key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
                 {editingRiskId === r.id ? (
                   <div style={{ padding: "14px 0" }}>
@@ -652,6 +703,33 @@ export default function DashboardDetailPage() {
                 )}
               </div>
             ))}
+
+            {inheritedRisks.length > 0 && (
+              <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Inherited from child dashboards
+                </div>
+                {inheritedRisks.map((r) => (
+                  <div key={r.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{r.risk_title}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                          {acctName(r.account_id)} &nbsp;·&nbsp; {ownerName(r.risk_owner)}
+                          {r.target_mitigation_date && <> &nbsp;·&nbsp; Target {fmt(r.target_mitigation_date)}</>}
+                        </div>
+                        {r.risk_description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{r.risk_description}</div>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{r.source_dashboard_name}</span>
+                        <span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span>
+                        <span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── DECISIONS ── */}
@@ -693,11 +771,11 @@ export default function DashboardDetailPage() {
               </div>
             )}
 
-            {decisions.length === 0 && !showCreateDecision && (
+            {ownDecisions.length === 0 && !showCreateDecision && inheritedDecisions.length === 0 && (
               <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No decisions yet.</div>
             )}
 
-            {decisions.map((d) => (
+            {ownDecisions.map((d) => (
               <div key={d.id} style={{ borderTop: "1px solid var(--border)" }}>
                 {editingDecisionId === d.id ? (
                   <div style={{ padding: "14px 0" }}>
@@ -755,6 +833,33 @@ export default function DashboardDetailPage() {
                 )}
               </div>
             ))}
+
+            {inheritedDecisions.length > 0 && (
+              <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                  Inherited from child dashboards
+                </div>
+                {inheritedDecisions.map((d) => (
+                  <div key={d.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{d.decision_title}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                          {acctName(d.account_id)} &nbsp;·&nbsp; {ownerName(d.decision_owner)}
+                          {d.decision_deadline && <> &nbsp;·&nbsp; Deadline {fmt(d.decision_deadline)}</>}
+                          {d.impact_area && <> &nbsp;·&nbsp; {d.impact_area}</>}
+                        </div>
+                        {d.decision_context && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{d.decision_context}</div>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, background: "rgba(99,102,241,0.12)", color: "#6366f1", fontWeight: 500 }}>{d.source_dashboard_name}</span>
+                        <span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}

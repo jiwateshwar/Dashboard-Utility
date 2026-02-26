@@ -28,19 +28,31 @@ router.get("/", async (req, res) => {
   const owner = await isDashboardOwner(userId, dashboard_id);
 
   const { rows } = await query(
-    `SELECT d.*, u.name as owner_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, name, 0 AS rel_depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT d2.id, d2.name, c.rel_depth + 1
+       FROM dashboards d2 JOIN child_dashboards c ON d2.parent_dashboard_id = c.id
+       WHERE c.rel_depth < 2
+     )
+     SELECT d.*, u.name as owner_name,
+            cd.name as source_dashboard_name, cd.id as source_dashboard_id
      FROM decisions d
+     JOIN child_dashboards cd ON d.dashboard_id = cd.id
      JOIN users u ON u.id = d.decision_owner
-     WHERE d.dashboard_id = $1
-       AND ($5::boolean IS TRUE OR d.is_archived = false)
+     WHERE ($5::boolean IS TRUE OR d.is_archived = false)
        AND (
-         d.publish_flag = true OR
-         d.decision_owner = $2 OR
-         d.created_by = $2 OR
-         d.decision_owner = ANY($3) OR
-         d.created_by = ANY($3) OR
-         $4
-       )`,
+         (cd.id = $1 AND (
+           d.publish_flag = true OR
+           d.decision_owner = $2 OR
+           d.created_by = $2 OR
+           d.decision_owner = ANY($3) OR
+           d.created_by = ANY($3) OR
+           $4
+         ))
+         OR (cd.id != $1 AND d.publish_flag = true)
+       )
+     ORDER BY cd.rel_depth, d.created_at DESC`,
     [dashboard_id, userId, subordinates, owner, include_archived === "true"]
   );
 

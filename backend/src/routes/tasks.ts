@@ -20,21 +20,36 @@ router.get("/", async (req, res) => {
   const subordinates = await getSubordinateIds(userId);
   const owner = await isDashboardOwner(userId, dashboard_id);
 
+  // Recursive CTE: include child dashboards (up to 2 levels down = 3 total).
+  // Own dashboard: normal access rules.
+  // Child dashboards: only publish_flag=true items flow upward.
   const { rows } = await query(
-    `SELECT t.*, u.name as owner_name,
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, name, 0 AS rel_depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT d.id, d.name, c.rel_depth + 1
+       FROM dashboards d JOIN child_dashboards c ON d.parent_dashboard_id = c.id
+       WHERE c.rel_depth < 2
+     )
+     SELECT t.*, u.name as owner_name,
+            cd.name as source_dashboard_name, cd.id as source_dashboard_id,
             date_part('day', now() - t.created_at) as aging_days_calc
      FROM tasks t
+     JOIN child_dashboards cd ON t.dashboard_id = cd.id
      JOIN users u ON u.id = t.owner_id
-     WHERE t.dashboard_id = $1
-       AND ($5::boolean IS TRUE OR t.is_archived = false)
+     WHERE ($5::boolean IS TRUE OR t.is_archived = false)
        AND (
-         t.publish_flag = true OR
-         t.owner_id = $2 OR
-         t.created_by = $2 OR
-         t.owner_id = ANY($3) OR
-         t.created_by = ANY($3) OR
-         $4
-       )`,
+         (cd.id = $1 AND (
+           t.publish_flag = true OR
+           t.owner_id = $2 OR
+           t.created_by = $2 OR
+           t.owner_id = ANY($3) OR
+           t.created_by = ANY($3) OR
+           $4
+         ))
+         OR (cd.id != $1 AND t.publish_flag = true)
+       )
+     ORDER BY cd.rel_depth, t.created_at DESC`,
     [dashboard_id, userId, subordinates, owner, include_archived === "true"]
   );
 
