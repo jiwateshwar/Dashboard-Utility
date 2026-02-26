@@ -40,6 +40,11 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/audit">
         Audit Log
       </NavLink>
+      {(user.role === "Admin" || user.role === "SuperAdmin") && (
+        <NavLink className="nav-item" to="/access-logs">
+          Access Logs
+        </NavLink>
+      )}
       <NavLink className="nav-item" to="/notifications">
         Escalations
       </NavLink>

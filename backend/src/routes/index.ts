@@ -16,6 +16,7 @@ import groupsRouter from "./groups.js";
 import escalationsRouter from "./escalations.js";
 import auditRouter from "./audit.js";
 import feedbackRouter from "./feedback.js";
+import adminRouter from "./admin.js";
 
 export const router = Router();
 
@@ -36,3 +37,4 @@ router.use("/groups", groupsRouter);
 router.use("/escalations", escalationsRouter);
 router.use("/audit", auditRouter);
 router.use("/feedback", feedbackRouter);
+router.use("/admin", adminRouter);

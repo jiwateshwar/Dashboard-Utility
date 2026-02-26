@@ -23,7 +23,7 @@ router.post("/login", async (req, res) => {
   res.json({ message: "OTP required", otp: "1111" });
 });
 
-router.post("/verify", (req, res) => {
+router.post("/verify", async (req, res) => {
   const { otp } = req.body as { otp?: string };
   if (!req.session.pendingOtpUserId) {
     return res.status(400).json({ error: "No pending login" });
@@ -31,8 +31,17 @@ router.post("/verify", (req, res) => {
   if (otp !== "1111") {
     return res.status(400).json({ error: "Invalid OTP" });
   }
-  req.session.userId = req.session.pendingOtpUserId;
+  const userId = req.session.pendingOtpUserId;
+  req.session.userId = userId;
   req.session.pendingOtpUserId = undefined;
+
+  // Record login event for access logs
+  await query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [userId]);
+  await query(
+    `INSERT INTO login_history (user_id, ip_address, user_agent) VALUES ($1, $2, $3)`,
+    [userId, req.ip ?? null, req.headers["user-agent"] ?? null]
+  );
+
   res.json({ message: "Authenticated" });
 });
 
