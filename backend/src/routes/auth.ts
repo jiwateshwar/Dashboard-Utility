@@ -45,6 +45,16 @@ router.post("/verify", async (req, res) => {
   res.json({ message: "Authenticated" });
 });
 
+router.get("/stats", async (_req, res) => {
+  const { rows } = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM users   WHERE is_active = true) AS users,
+       (SELECT COUNT(*)::int FROM dashboards WHERE is_active = true) AS dashboards,
+       (SELECT COUNT(*)::int FROM tasks   WHERE is_archived = false) AS tasks`
+  );
+  res.json(rows[0]);
+});
+
 router.get("/me", requireAuth, async (req, res) => {
   const { rows } = await query(
     `SELECT id, name, email, manager_id, level, role, is_active FROM users WHERE id = $1`,

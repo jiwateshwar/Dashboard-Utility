@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 
 export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void }) {
@@ -6,14 +6,16 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<{ users: number; dashboards: number; tasks: number } | null>(null);
+
+  useEffect(() => {
+    api("/auth/stats").then(setStats).catch(() => {});
+  }, []);
 
   async function handleEmail() {
     setError(null);
     try {
-      await api("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email })
-      });
+      await api("/auth/login", { method: "POST", body: JSON.stringify({ email }) });
       setStep("otp");
     } catch (err: any) {
       setError(err.message);
@@ -23,10 +25,7 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
   async function handleOtp() {
     setError(null);
     try {
-      await api("/auth/verify", {
-        method: "POST",
-        body: JSON.stringify({ otp })
-      });
+      await api("/auth/verify", { method: "POST", body: JSON.stringify({ otp }) });
       const user = await api("/auth/me");
       onAuthed(user);
     } catch (err: any) {
@@ -35,26 +34,121 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
   }
 
   return (
-    <div className="main" style={{ maxWidth: 460, margin: "0 auto" }}>
-      <div className="card">
-        <h2>PRISM Access</h2>
-        <p style={{ color: "#9aa5b1" }}>Enter your email to receive an OTP (fixed for MVP).</p>
-        {step === "email" ? (
-          <>
-            <input className="input" placeholder="email@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <button className="button" style={{ marginTop: 12 }} onClick={handleEmail}>
-              Continue
-            </button>
-          </>
-        ) : (
-          <>
-            <input className="input" placeholder="OTP (1111)" value={otp} onChange={(e) => setOtp(e.target.value)} />
-            <button className="button" style={{ marginTop: 12 }} onClick={handleOtp}>
-              Verify
-            </button>
-          </>
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "stretch",
+      background: "var(--bg)"
+    }}>
+      {/* ── Left panel ── */}
+      <div style={{
+        flex: "0 0 55%",
+        background: "linear-gradient(145deg, #0f172a 0%, #1e3a5f 60%, #1d4ed8 100%)",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        padding: "64px 72px",
+        color: "#fff"
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", color: "rgba(255,255,255,0.5)", marginBottom: 12 }}>
+          MCS Leadership Tool
+        </div>
+        <div style={{ fontSize: 52, fontWeight: 800, letterSpacing: -1, lineHeight: 1.05, marginBottom: 8 }}>
+          PRISM
+        </div>
+        <div style={{ fontSize: 15, color: "rgba(255,255,255,0.6)", marginBottom: 32, fontStyle: "italic" }}>
+          Performance Reporting, Insights &amp; Status Management
+        </div>
+
+        <p style={{ fontSize: 15, lineHeight: 1.75, color: "rgba(255,255,255,0.8)", maxWidth: 480, marginBottom: 48 }}>
+          PRISM is a centralised leadership dashboard platform that gives MCS teams a single, real-time view of tasks, risks, decisions, and escalations across all their programmes. It replaces fragmented spreadsheets and status emails with structured, trackable records — enabling faster decisions, clearer accountability, and proactive escalation management.
+        </p>
+
+        {/* Stats strip */}
+        {stats && (
+          <div style={{ display: "flex", gap: 40, marginBottom: 56 }}>
+            {[
+              { value: stats.users,      label: "Registered Users" },
+              { value: stats.dashboards, label: "Dashboards Managed" },
+              { value: stats.tasks,      label: "Tasks Tracked" }
+            ].map(({ value, label }) => (
+              <div key={label}>
+                <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1 }}>{value.toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
+              </div>
+            ))}
+          </div>
         )}
-        {error && <div style={{ marginTop: 12, color: "#ef6a62" }}>{error}</div>}
+
+        {/* Attribution */}
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 24 }}>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>
+            Built by team MCS-DSDP
+          </div>
+          <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", fontWeight: 500 }}>
+            Sarthak &nbsp;·&nbsp; Ishita &nbsp;·&nbsp; Jiwa
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right panel — login form ── */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "48px 40px"
+      }}>
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          <h2 style={{ marginBottom: 6 }}>Welcome back</h2>
+          <p style={{ color: "var(--muted)", marginBottom: 28, fontSize: 14 }}>
+            {step === "email"
+              ? "Enter your work email to sign in."
+              : "Enter the OTP sent to your email."}
+          </p>
+
+          {step === "email" ? (
+            <>
+              <input
+                className="input"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleEmail()}
+                autoFocus
+              />
+              <button className="button" style={{ marginTop: 12, width: "100%" }} onClick={handleEmail}>
+                Continue
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                className="input"
+                placeholder="Enter OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleOtp()}
+                autoFocus
+              />
+              <button className="button" style={{ marginTop: 12, width: "100%" }} onClick={handleOtp}>
+                Verify &amp; Sign In
+              </button>
+              <button
+                onClick={() => { setStep("email"); setOtp(""); setError(null); }}
+                style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13 }}
+              >
+                ← Use a different email
+              </button>
+            </>
+          )}
+
+          {error && (
+            <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(239,106,98,0.1)", border: "1px solid rgba(239,106,98,0.3)", borderRadius: 6, color: "#ef6a62", fontSize: 13 }}>
+              {error}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
