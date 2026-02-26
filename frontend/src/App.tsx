@@ -20,7 +20,7 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  role: "Admin" | "User";
+  role: "Admin" | "SuperAdmin" | "User";
 };
 
 export default function App() {
