@@ -77,6 +77,7 @@ async function validateParent(dashboardId: string | null, parentId: string): Pro
 
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;
+  const role = await getUserRole(userId);
   const { rows } = await query(
     `SELECT d.*,
        (SELECT json_agg(json_build_object('user_id', dbo2.user_id, 'name', u.name) ORDER BY u.name)
@@ -85,12 +86,12 @@ router.get("/", async (req, res) => {
        pd.name AS parent_dashboard_name
      FROM dashboards d
      LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
-     WHERE d.id IN (
-       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $1
+     WHERE $1 OR d.id IN (
+       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $2
        UNION
-       SELECT dashboard_id FROM dashboard_access WHERE user_id = $1
+       SELECT dashboard_id FROM dashboard_access WHERE user_id = $2
      )`,
-    [userId]
+    [role === "Admin", userId]
   );
   res.json(rows);
 });
@@ -128,16 +129,17 @@ router.post("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
+  const role = await getUserRole(userId);
   const { rows } = await query(
     `SELECT d.*, pd.name AS parent_dashboard_name
      FROM dashboards d
      LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
-     WHERE d.id = $1 AND d.id IN (
-       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $2
+     WHERE d.id = $1 AND ($2 OR d.id IN (
+       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $3
        UNION
-       SELECT dashboard_id FROM dashboard_access WHERE user_id = $2
-     )`,
-    [id, userId]
+       SELECT dashboard_id FROM dashboard_access WHERE user_id = $3
+     ))`,
+    [id, role === "Admin", userId]
   );
   if (!rows[0]) return res.status(404).json({ error: "Not found" });
   res.json(rows[0]);
@@ -234,7 +236,8 @@ router.put("/:id/owners", async (req, res) => {
 router.get("/:id/summary", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const canView = (await hasDashboardAccess(userId, id)) || (await isDashboardOwner(userId, id));
+  const role = await getUserRole(userId);
+  const canView = role === "Admin" || (await hasDashboardAccess(userId, id)) || (await isDashboardOwner(userId, id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
   // Collect this dashboard + all descendants (max 2 levels down = 3 total)

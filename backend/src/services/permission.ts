@@ -27,6 +27,8 @@ export async function hasDashboardAccess(userId: string, dashboardId: string) {
 }
 
 export async function canEditDashboard(userId: string, dashboardId: string) {
+  const role = await getUserRole(userId);
+  if (role === "Admin") return true;
   const { rows } = await query(
     `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_edit = true`,
     [dashboardId, userId]

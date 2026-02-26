@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
   const id = uuid();
-  let finalLevel = level;
+  let finalLevel = level ? Number(level) : null;
   if (manager_id) {
     const manager = await query(`SELECT level FROM users WHERE id = $1`, [manager_id]);
     const managerLevel = manager.rows[0]?.level;
@@ -35,9 +35,7 @@ router.post("/", async (req, res) => {
     if (!finalLevel) finalLevel = managerLevel + 1;
     if (finalLevel <= managerLevel) return res.status(400).json({ error: "User level must be greater than manager level" });
   }
-  if (!finalLevel) {
-    return res.status(400).json({ error: "level required" });
-  }
+  if (!finalLevel) finalLevel = 1;
   if (manager_id && (await willCreateLoop(id, manager_id))) {
     return res.status(400).json({ error: "Hierarchy loop detected" });
   }

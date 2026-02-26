@@ -12,7 +12,7 @@ export default function AdminPage() {
   const [categoryDashboard, setCategoryDashboard] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", level: "", role: "User" });
+  const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", role: "User" });
   const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[], parent_dashboard_id: "" });
   const [editingDashboard, setEditingDashboard] = useState<{ id: string; name: string; description: string; ownerIds: string[]; parent_dashboard_id: string } | null>(null);
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
@@ -87,8 +87,8 @@ export default function AdminPage() {
   async function handleCreateUser() {
     setError(null);
     try {
-      await api("/users", { method: "POST", body: JSON.stringify({ name: newUser.name, email: newUser.email, manager_id: newUser.manager_id || null, level: newUser.level ? Number(newUser.level) : undefined, role: newUser.role }) });
-      setNewUser({ name: "", email: "", manager_id: "", level: "", role: "User" });
+      await api("/users", { method: "POST", body: JSON.stringify({ name: newUser.name, email: newUser.email, manager_id: newUser.manager_id || null, role: newUser.role }) });
+      setNewUser({ name: "", email: "", manager_id: "", role: "User" });
       await loadAll();
     } catch (err: any) { setError(err.message); }
   }
@@ -216,7 +216,6 @@ export default function AdminPage() {
               <option value="">No Manager</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
-            <input className="input" placeholder="Level (1-5)" value={newUser.level} onChange={(e) => setNewUser({ ...newUser, level: e.target.value })} />
             <select className="select" value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}>
               <option value="User">User</option><option value="Admin">Admin</option>
             </select>
