@@ -109,10 +109,11 @@ router.post("/signup-requests/:id/reject", async (req, res) => {
   const result = await query(
     `UPDATE signup_requests
      SET status = 'Rejected', reviewed_by = $2, reviewed_at = now()
-     WHERE id = $1 AND status = 'Pending'`,
+     WHERE id = $1 AND status = 'Pending'
+     RETURNING id`,
     [req.params.id, req.session.userId]
   );
-  if (result.rowCount === 0) return res.status(404).json({ error: "Not found or already reviewed" });
+  if (result.rows.length === 0) return res.status(404).json({ error: "Not found or already reviewed" });
   res.json({ ok: true });
 });
 
