@@ -60,3 +60,13 @@ app.use("/api", apiLimiter, router);
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// Global error handler — catches any unhandled thrown errors in route handlers
+// and returns a JSON 500 instead of crashing the process.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[unhandled error]", err);
+  if (err.code === "23505") {
+    return res.status(409).json({ error: "A record with that value already exists" });
+  }
+  res.status(500).json({ error: "Internal server error" });
+});

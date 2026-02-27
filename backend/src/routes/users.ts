@@ -39,11 +39,18 @@ router.post("/", async (req, res) => {
   if (manager_id && (await willCreateLoop(id, manager_id))) {
     return res.status(400).json({ error: "Hierarchy loop detected" });
   }
-  await query(
-    `INSERT INTO users (id, name, email, manager_id, level, role, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, true)`,
-    [id, name, email, manager_id || null, finalLevel, userRole || "User"]
-  );
+  try {
+    await query(
+      `INSERT INTO users (id, name, email, manager_id, level, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, true)`,
+      [id, name, email, manager_id || null, finalLevel, userRole || "User"]
+    );
+  } catch (err: any) {
+    if (err.code === "23505") {
+      return res.status(409).json({ error: "A user with this email already exists" });
+    }
+    throw err;
+  }
   res.json({ id });
 });
 
