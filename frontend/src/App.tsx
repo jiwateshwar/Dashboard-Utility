@@ -14,6 +14,7 @@ import AuditLogPage from "./pages/AuditLogPage";
 import SnapshotsPage from "./pages/SnapshotsPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import AccessLogPage from "./pages/AccessLogPage";
+import ProfilePage from "./pages/ProfilePage";
 import Sidebar from "./components/Sidebar";
 
 export type User = {
@@ -133,6 +134,7 @@ export default function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/feedback" element={<FeedbackPage user={user} />} />
             <Route path="/access-logs" element={<AccessLogPage />} />
+            <Route path="/profile" element={<ProfilePage user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>

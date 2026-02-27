@@ -20,7 +20,7 @@ router.post("/login", async (req, res) => {
     return res.status(403).json({ error: "User inactive" });
   }
   req.session.pendingOtpUserId = rows[0].id;
-  res.json({ message: "OTP required", otp: "1111" });
+  res.json({ message: "Employee ID required" });
 });
 
 router.post("/verify", async (req, res) => {
@@ -28,10 +28,16 @@ router.post("/verify", async (req, res) => {
   if (!req.session.pendingOtpUserId) {
     return res.status(400).json({ error: "No pending login" });
   }
-  if (otp !== "1111") {
-    return res.status(400).json({ error: "Invalid OTP" });
-  }
   const userId = req.session.pendingOtpUserId;
+
+  const { rows: eidRows } = await query(
+    `SELECT employee_id FROM users WHERE id = $1`, [userId]
+  );
+  const validOtp: string = eidRows[0]?.employee_id ?? "1111";
+  if (otp !== validOtp) {
+    return res.status(400).json({ error: "Invalid employee ID" });
+  }
+
   req.session.userId = userId;
   req.session.pendingOtpUserId = undefined;
 
@@ -43,6 +49,19 @@ router.post("/verify", async (req, res) => {
   );
 
   res.json({ message: "Authenticated" });
+});
+
+// Authenticated: update own employee ID
+router.patch("/me/employee-id", requireAuth, async (req, res) => {
+  const { employee_id } = req.body as { employee_id?: string };
+  if (!employee_id || employee_id.length < 4 || employee_id.length > 10) {
+    return res.status(400).json({ error: "Employee ID must be 4–10 characters" });
+  }
+  await query(
+    `UPDATE users SET employee_id = $1 WHERE id = $2`,
+    [employee_id, req.session.userId]
+  );
+  res.json({ ok: true });
 });
 
 // Public: manager list for signup dropdown
@@ -79,7 +98,7 @@ router.post("/signup", async (req, res) => {
 
   // Notify all active admins
   const admins = await query(
-    `SELECT id FROM users WHERE role IN ('Admin', 'SuperAdmin') AND is_active = true`
+    `SELECT id FROM users WHERE role::text IN ('Admin', 'SuperAdmin') AND is_active = true`
   );
   for (const admin of admins.rows) {
     await query(
@@ -103,7 +122,7 @@ router.get("/stats", async (_req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   const { rows } = await query(
-    `SELECT id, name, email, manager_id, level, role, is_active FROM users WHERE id = $1`,
+    `SELECT id, name, email, manager_id, level, role, is_active, employee_id FROM users WHERE id = $1`,
     [req.session.userId]
   );
   res.json(rows[0]);

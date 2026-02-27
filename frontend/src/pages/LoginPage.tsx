@@ -167,11 +167,12 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
             <>
               <h2 style={{ marginBottom: 6 }}>Verify your identity</h2>
               <p style={{ color: "var(--muted)", marginBottom: 28, fontSize: 14 }}>
-                Enter the OTP for <strong>{email}</strong>.
+                Enter your employee ID for <strong>{email}</strong>.
               </p>
               <input
                 className="input"
-                placeholder="Enter OTP"
+                type="password"
+                placeholder="Employee ID"
                 value={otp}
                 onChange={(e) => setOtp(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleOtp()}

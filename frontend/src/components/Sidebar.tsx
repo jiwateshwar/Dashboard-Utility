@@ -68,6 +68,9 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/feedback">
         Feedback
       </NavLink>
+      <NavLink className="nav-item" to="/profile">
+        My Profile
+      </NavLink>
       <div style={{ marginTop: "auto", paddingTop: 16, fontSize: 11, color: "rgba(255,255,255,0.3)", lineHeight: 1.5 }}>
         Built for MCS Leadership<br />by team DSDP
       </div>
