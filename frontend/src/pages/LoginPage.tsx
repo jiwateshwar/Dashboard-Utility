@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void }) {
-  const [step, setStep] = useState<"email" | "otp">("email");
+  const [step, setStep] = useState<"email" | "otp" | "signup">("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<{ users: number; dashboards: number; tasks: number } | null>(null);
+
+  const [signup, setSignup] = useState({ name: "", email: "", manager_id: "" });
+  const [managers, setManagers] = useState<{ id: string; name: string }[]>([]);
+  const [signupDone, setSignupDone] = useState(false);
 
   useEffect(() => {
     api("/auth/stats").then(setStats).catch(() => {});
@@ -31,6 +35,34 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
     } catch (err: any) {
       setError(err.message);
     }
+  }
+
+  async function openSignup() {
+    setError(null);
+    try {
+      const data = await api("/auth/managers");
+      setManagers(data);
+    } catch {
+      setManagers([]);
+    }
+    setStep("signup");
+  }
+
+  async function handleSignup() {
+    setError(null);
+    try {
+      await api("/auth/signup", { method: "POST", body: JSON.stringify(signup) });
+      setSignupDone(true);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  function backToLogin() {
+    setStep("email");
+    setSignupDone(false);
+    setSignup({ name: "", email: "", manager_id: "" });
+    setError(null);
   }
 
   return (
@@ -91,7 +123,7 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
         </div>
       </div>
 
-      {/* ── Right panel — login form ── */}
+      {/* ── Right panel ── */}
       <div style={{
         flex: 1,
         display: "flex",
@@ -100,15 +132,14 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
         padding: "48px 40px"
       }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
-          <h2 style={{ marginBottom: 6 }}>Welcome back</h2>
-          <p style={{ color: "var(--muted)", marginBottom: 28, fontSize: 14 }}>
-            {step === "email"
-              ? "Enter your work email to sign in."
-              : "Enter the OTP sent to your email."}
-          </p>
 
-          {step === "email" ? (
+          {/* ── Login: email step ── */}
+          {step === "email" && (
             <>
+              <h2 style={{ marginBottom: 6 }}>Welcome back</h2>
+              <p style={{ color: "var(--muted)", marginBottom: 28, fontSize: 14 }}>
+                Enter your work email to sign in.
+              </p>
               <input
                 className="input"
                 placeholder="your@email.com"
@@ -120,9 +151,24 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
               <button className="button" style={{ marginTop: 12, width: "100%" }} onClick={handleEmail}>
                 Continue
               </button>
+              <div style={{ marginTop: 20, textAlign: "center" }}>
+                <button
+                  onClick={openSignup}
+                  style={{ background: "none", border: "none", color: "#1d63ed", cursor: "pointer", fontSize: 13 }}
+                >
+                  Don't have access? Request it →
+                </button>
+              </div>
             </>
-          ) : (
+          )}
+
+          {/* ── Login: OTP step ── */}
+          {step === "otp" && (
             <>
+              <h2 style={{ marginBottom: 6 }}>Verify your identity</h2>
+              <p style={{ color: "var(--muted)", marginBottom: 28, fontSize: 14 }}>
+                Enter the OTP for <strong>{email}</strong>.
+              </p>
               <input
                 className="input"
                 placeholder="Enter OTP"
@@ -141,6 +187,63 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
                 ← Use a different email
               </button>
             </>
+          )}
+
+          {/* ── Signup step ── */}
+          {step === "signup" && (
+            signupDone ? (
+              <>
+                <div style={{ fontSize: 40, marginBottom: 16 }}>✓</div>
+                <h2 style={{ marginBottom: 8 }}>Request submitted</h2>
+                <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+                  Your access request has been sent to the administrators. You'll be able to log in once your request is approved.
+                </p>
+                <button className="button secondary" style={{ width: "100%" }} onClick={backToLogin}>
+                  ← Back to login
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 style={{ marginBottom: 6 }}>Request Access</h2>
+                <p style={{ color: "var(--muted)", marginBottom: 28, fontSize: 14 }}>
+                  Fill in your details. An admin will approve your request.
+                </p>
+                <input
+                  className="input"
+                  placeholder="Full name"
+                  value={signup.name}
+                  onChange={(e) => setSignup({ ...signup, name: e.target.value })}
+                  autoFocus
+                />
+                <input
+                  className="input"
+                  placeholder="Work email"
+                  value={signup.email}
+                  onChange={(e) => setSignup({ ...signup, email: e.target.value })}
+                  style={{ marginTop: 8 }}
+                />
+                <select
+                  className="select"
+                  value={signup.manager_id}
+                  onChange={(e) => setSignup({ ...signup, manager_id: e.target.value })}
+                  style={{ marginTop: 8 }}
+                >
+                  <option value="">Select your manager *</option>
+                  {managers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+                <button className="button" style={{ marginTop: 14, width: "100%" }} onClick={handleSignup}>
+                  Submit Request
+                </button>
+                <button
+                  onClick={backToLogin}
+                  style={{ marginTop: 10, width: "100%", background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13 }}
+                >
+                  ← Back to login
+                </button>
+              </>
+            )
           )}
 
           {error && (

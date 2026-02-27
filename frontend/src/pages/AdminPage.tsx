@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access">("users");
+  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access" | "signup-requests">("users");
+  const [signupRequests, setSignupRequests] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -26,11 +27,12 @@ export default function AdminPage() {
   async function loadAll() {
     setError(null);
     try {
-      const results = await Promise.allSettled([api("/users"), api("/dashboards"), api("/groups"), api("/accounts")]);
+      const results = await Promise.allSettled([api("/users"), api("/dashboards"), api("/groups"), api("/accounts"), api("/admin/signup-requests")]);
       if (results[0].status === "fulfilled") setUsers(results[0].value as any[]);
       if (results[1].status === "fulfilled") setDashboards(results[1].value as any[]);
       if (results[2].status === "fulfilled") setGroups(results[2].value as any[]);
       if (results[3].status === "fulfilled") setAccounts(results[3].value as any[]);
+      if (results[4].status === "fulfilled") setSignupRequests(results[4].value as any[]);
     } catch (err: any) { setError(err.message || "Failed to load data"); }
   }
 
@@ -218,6 +220,18 @@ export default function AdminPage() {
         {(["users", "dashboards", "groups", "accounts", "categories", "access"] as const).map((t) => (
           <button key={t} className={`button ${tab === t ? "" : "secondary"}`} onClick={() => setTab(t)} style={{ textTransform: "capitalize" }}>{t}</button>
         ))}
+        <button
+          className={`button ${tab === "signup-requests" ? "" : "secondary"}`}
+          onClick={() => setTab("signup-requests")}
+          style={{ position: "relative" }}
+        >
+          Signup Requests
+          {signupRequests.filter((r) => r.status === "Pending").length > 0 && (
+            <span style={{ marginLeft: 6, background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+              {signupRequests.filter((r) => r.status === "Pending").length}
+            </span>
+          )}
+        </button>
       </div>
 
       {tab === "users" && (
@@ -471,6 +485,63 @@ export default function AdminPage() {
                   <td>{c.name}</td>
                   <td><span className="badge">{c.is_active ? "Active" : "Inactive"}</span></td>
                   <td><button className="button" onClick={() => toggleCategory(c)}>{c.is_active ? "Deactivate" : "Activate"}</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "signup-requests" && (
+        <div className="card">
+          <h3 style={{ margin: "0 0 16px 0" }}>Signup Requests</h3>
+          <table className="table">
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Manager</th><th>Requested</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {signupRequests.length === 0 && (
+                <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No signup requests</td></tr>
+              )}
+              {signupRequests.map((r) => (
+                <tr key={r.id}>
+                  <td style={{ fontWeight: 500 }}>{r.name}</td>
+                  <td style={{ color: "var(--muted)" }}>{r.email}</td>
+                  <td style={{ color: "var(--muted)" }}>{r.manager_name || "—"}</td>
+                  <td style={{ color: "var(--muted)", fontSize: 13 }}>{new Date(r.requested_at).toLocaleString()}</td>
+                  <td>
+                    <span style={{
+                      padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600,
+                      background: r.status === "Pending" ? "rgba(245,166,35,0.15)" : r.status === "Approved" ? "rgba(34,197,94,0.15)" : "rgba(239,106,98,0.15)",
+                      color: r.status === "Pending" ? "#b45309" : r.status === "Approved" ? "#15803d" : "#ef6a62"
+                    }}>{r.status}</span>
+                  </td>
+                  <td>
+                    {r.status === "Pending" ? (
+                      <div className="inline-actions">
+                        <button className="button" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                          onClick={async () => {
+                            try {
+                              await api(`/admin/signup-requests/${r.id}/approve`, { method: "POST" });
+                              await loadAll();
+                            } catch (e: any) { setError(e.message); }
+                          }}>
+                          Approve
+                        </button>
+                        <button className="button secondary" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                          onClick={async () => {
+                            try {
+                              await api(`/admin/signup-requests/${r.id}/reject`, { method: "POST" });
+                              await loadAll();
+                            } catch (e: any) { setError(e.message); }
+                          }}>
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "var(--muted)" }}>by {r.reviewed_by_name || "—"}</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -45,6 +45,52 @@ router.post("/verify", async (req, res) => {
   res.json({ message: "Authenticated" });
 });
 
+// Public: manager list for signup dropdown
+router.get("/managers", async (_req, res) => {
+  const { rows } = await query(
+    `SELECT id, name FROM users WHERE is_active = true ORDER BY name`
+  );
+  res.json(rows);
+});
+
+// Public: submit a signup request
+router.post("/signup", async (req, res) => {
+  const { name, email, manager_id } = req.body as any;
+  if (!name || !email || !manager_id) {
+    return res.status(400).json({ error: "Name, email and manager are required" });
+  }
+
+  const existing = await query(`SELECT id FROM users WHERE email = $1`, [email]);
+  if (existing.rows.length > 0) {
+    return res.status(409).json({ error: "An account with this email already exists" });
+  }
+
+  const pending = await query(
+    `SELECT id FROM signup_requests WHERE email = $1 AND status = 'Pending'`, [email]
+  );
+  if (pending.rows.length > 0) {
+    return res.status(409).json({ error: "A signup request for this email is already pending" });
+  }
+
+  await query(
+    `INSERT INTO signup_requests (name, email, manager_id) VALUES ($1, $2, $3)`,
+    [name, email, manager_id]
+  );
+
+  // Notify all active admins
+  const admins = await query(
+    `SELECT id FROM users WHERE role IN ('Admin', 'SuperAdmin') AND is_active = true`
+  );
+  for (const admin of admins.rows) {
+    await query(
+      `INSERT INTO notifications (id, user_id, message) VALUES (gen_random_uuid(), $1, $2)`,
+      [admin.id, `New signup request from ${name} (${email})`]
+    );
+  }
+
+  res.json({ message: "Request submitted. An admin will review your request." });
+});
+
 router.get("/stats", async (_req, res) => {
   const { rows } = await query(
     `SELECT

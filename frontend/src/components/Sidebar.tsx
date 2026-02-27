@@ -1,9 +1,21 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { api } from "../api";
 import type { User } from "../App";
 
 declare const __APP_VERSION__: string;
 
 export default function Sidebar({ user }: { user: User }) {
+  const [pendingSignups, setPendingSignups] = useState(0);
+  const isAdmin = user.role === "Admin" || user.role === "SuperAdmin";
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api("/admin/signup-requests/pending-count")
+      .then((d: any) => setPendingSignups(d.count))
+      .catch(() => {});
+  }, [isAdmin]);
+
   return (
     <aside className="sidebar" style={{ display: "flex", flexDirection: "column" }}>
       <div>
@@ -28,8 +40,13 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/search">
         Search
       </NavLink>
-      <NavLink className="nav-item" to="/manage">
+      <NavLink className="nav-item" to="/manage" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         Admin & Owners
+        {pendingSignups > 0 && (
+          <span style={{ background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700, lineHeight: 1.6 }}>
+            {pendingSignups}
+          </span>
+        )}
       </NavLink>
       <NavLink className="nav-item" to="/snapshots">
         Publishing
@@ -40,7 +57,7 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/audit">
         Audit Log
       </NavLink>
-      {(user.role === "Admin" || user.role === "SuperAdmin") && (
+      {isAdmin && (
         <NavLink className="nav-item" to="/access-logs">
           Access Logs
         </NavLink>
