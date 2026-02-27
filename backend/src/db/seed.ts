@@ -7,8 +7,8 @@ async function run() {
 
   await pool.query(
     `INSERT INTO users (id, name, email, manager_id, level, is_active, created_at, updated_at, role)
-     VALUES ($1, $2, $3, NULL, 1, true, $4, $4, 'Admin')
-     ON CONFLICT (email) DO NOTHING`,
+     VALUES ($1, $2, $3, NULL, 1, true, $4, $4, 'SuperAdmin')
+     ON CONFLICT (email) DO UPDATE SET role = 'SuperAdmin'`,
     [adminId, "Admin User", "admin@prism.local", now]
   );
 
