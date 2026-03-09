@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getSubordinateIds } from "../services/hierarchy.js";
-import { hasDashboardAccess, isDashboardOwner } from "../services/permission.js";
+import { getUserRole, isAdminRole, hasDashboardAccess, isDashboardOwner } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -15,7 +15,8 @@ router.get("/", async (req, res) => {
   const subordinates = await getSubordinateIds(userId);
 
   if (dashboard_id) {
-    const canView = (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
+    const _role = await getUserRole(userId);
+    const canView = isAdminRole(_role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
     if (!canView) return res.status(403).json({ error: "No access" });
   }
 

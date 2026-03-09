@@ -86,7 +86,8 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
 
-  const canView = (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
+  const role = await getUserRole(userId);
+  const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
   const account = await query(`SELECT is_active FROM accounts WHERE id = $1`, [account_id]);

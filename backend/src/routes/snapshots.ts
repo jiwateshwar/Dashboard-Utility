@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { buildSnapshotContent } from "../services/publishing.js";
 import { buildEml } from "../services/emailSnapshot.js";
-import { hasDashboardAccess, isDashboardOwner } from "../services/permission.js";
+import { getUserRole, isAdminRole, hasDashboardAccess, isDashboardOwner } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -14,7 +14,8 @@ router.get("/", async (req, res) => {
   const { dashboard_id } = req.query as any;
   if (!dashboard_id) return res.status(400).json({ error: "dashboard_id required" });
   const userId = req.session.userId!;
-  const canView = (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
+  const _role1 = await getUserRole(userId);
+  const canView = isAdminRole(_role1) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
   const { rows } = await query(
@@ -47,7 +48,8 @@ router.get("/email/:dashboardId", async (req, res) => {
   const { dashboardId } = req.params;
   const { preview } = req.query as any;
   const userId = req.session.userId!;
-  const canView = (await hasDashboardAccess(userId, dashboardId)) || (await isDashboardOwner(userId, dashboardId));
+  const _role2 = await getUserRole(userId);
+  const canView = isAdminRole(_role2) || (await hasDashboardAccess(userId, dashboardId)) || (await isDashboardOwner(userId, dashboardId));
   if (!canView) return res.status(403).json({ error: "No access" });
 
   const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [dashboardId]);
