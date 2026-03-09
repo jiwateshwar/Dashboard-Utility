@@ -21,11 +21,14 @@ router.get("/", async (req, res) => {
   const { dashboard_id, include_archived } = req.query as any;
   if (!dashboard_id) return res.status(400).json({ error: "dashboard_id required" });
   const userId = req.session.userId!;
-  const canEdit = await canEditDashboard(userId, dashboard_id);
-  if (!canEdit) return res.status(403).json({ error: "No edit access" });
+  const role = await getUserRole(userId);
+  const isAdmin = isAdminRole(role);
+  const owner = await isDashboardOwner(userId, dashboard_id);
+  const canView = isAdmin || owner || (await hasDashboardAccess(userId, dashboard_id));
+  if (!canView) return res.status(403).json({ error: "No access" });
 
   const subordinates = await getSubordinateIds(userId);
-  const owner = await isDashboardOwner(userId, dashboard_id);
+  const fullAccess = owner || isAdmin;
 
   const { rows } = await query(
     `WITH RECURSIVE child_dashboards AS (
@@ -53,7 +56,7 @@ router.get("/", async (req, res) => {
          OR (cd.id != $1 AND d.publish_flag = true)
        )
      ORDER BY cd.rel_depth, d.created_at DESC`,
-    [dashboard_id, userId, subordinates, owner, include_archived === "true"]
+    [dashboard_id, userId, subordinates, fullAccess, include_archived === "true"]
   );
 
   res.json(rows.map((r) => ({ ...r, decision_rag: decisionRag(r.decision_deadline) })));

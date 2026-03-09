@@ -121,6 +121,11 @@ export default function DashboardDetailPage() {
   const [riskEditForm, setRiskEditForm] = useState<any>({});
   const [decisionEditForm, setDecisionEditForm] = useState<any>({});
 
+  // Category management state
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [categoryEditName, setCategoryEditName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
@@ -149,13 +154,46 @@ export default function DashboardDetailPage() {
 
   async function refresh() {
     if (!id) return;
-    const [t, r, d, s] = await Promise.all([
+    const [t, r, d, s, c] = await Promise.all([
       api(`/tasks?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/risks?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/decisions?dashboard_id=${id}&include_archived=${showArchived}`),
-      api(`/dashboards/${id}/summary`)
+      api(`/dashboards/${id}/summary`),
+      api(`/categories?dashboard_id=${id}`)
     ]);
-    setTasks(t); setRisks(r); setDecisions(d); setSummary(s);
+    setTasks(t); setRisks(r); setDecisions(d); setSummary(s); setCategories(c);
+  }
+
+  async function addCategory() {
+    if (!id || !newCategoryName.trim()) return;
+    await api(`/categories`, {
+      method: "POST",
+      body: JSON.stringify({ dashboard_id: id, name: newCategoryName.trim() })
+    });
+    setNewCategoryName("");
+    const c = await api(`/categories?dashboard_id=${id}`);
+    setCategories(c);
+  }
+
+  async function renameCategory(catId: string) {
+    if (!id || !categoryEditName.trim()) return;
+    await api(`/categories/${catId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ dashboard_id: id, name: categoryEditName.trim() })
+    });
+    setEditingCategoryId(null);
+    const c = await api(`/categories?dashboard_id=${id}`);
+    setCategories(c);
+  }
+
+  async function toggleCategory(catId: string, currentActive: boolean) {
+    if (!id) return;
+    await api(`/categories/${catId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ dashboard_id: id, is_active: !currentActive })
+    });
+    const c = await api(`/categories?dashboard_id=${id}`);
+    setCategories(c);
   }
 
   // ── Create handlers ─────────────────────────────────────────
@@ -1060,6 +1098,66 @@ export default function DashboardDetailPage() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* ── CATEGORIES ── */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ margin: 0 }}>Categories</h3>
+            </div>
+
+            {categories.map((cat) => (
+              <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: "1px solid var(--border)" }}>
+                {editingCategoryId === cat.id ? (
+                  <>
+                    <input
+                      className="input"
+                      style={{ flex: 1 }}
+                      value={categoryEditName}
+                      onChange={(e) => setCategoryEditName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") renameCategory(cat.id); if (e.key === "Escape") setEditingCategoryId(null); }}
+                      autoFocus
+                    />
+                    <button className="button" style={{ height: 30, padding: "0 12px", fontSize: 12 }} onClick={() => renameCategory(cat.id)}>Save</button>
+                    <button className="button secondary" style={{ height: 30, padding: "0 12px", fontSize: 12 }} onClick={() => setEditingCategoryId(null)}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ flex: 1, fontWeight: 500, fontSize: 14, color: cat.is_active ? "inherit" : "var(--muted)", textDecoration: cat.is_active ? "none" : "line-through" }}>
+                      {cat.name}
+                    </span>
+                    <button
+                      className="button secondary"
+                      style={{ height: 28, padding: "0 10px", fontSize: 12 }}
+                      onClick={() => { setEditingCategoryId(cat.id); setCategoryEditName(cat.name); }}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className={`button ${cat.is_active ? "secondary" : ""}`}
+                      style={{ height: 28, padding: "0 10px", fontSize: 12 }}
+                      onClick={() => toggleCategory(cat.id, cat.is_active)}
+                    >
+                      {cat.is_active ? "Disable" : "Enable"}
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <input
+                className="input"
+                style={{ flex: 1 }}
+                placeholder="New category name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addCategory()}
+              />
+              <button className="button" onClick={addCategory} disabled={!newCategoryName.trim()}>
+                + Add
+              </button>
+            </div>
           </div>
         </>
       )}

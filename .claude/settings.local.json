@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwidXNlcm5hbWUiOiJhZG1pbiIsInJvbGUiOjEsInNjb3BlIjoiZGVmYXVsdCIsImZvcmNlQ2hhbmdlUGFzc3dvcmQiOmZhbHNlLCJleHAiOjE3NzMwNzI0NDUsImlhdCI6MTc3MzA0MzY0NSwianRpIjoiYjcxMzk4ZTItZDU5YS00M2RhLTk2NDUtZTk0OWJiOTEyZTZlIn0.albt8IrtRDLvKLJZO3Nk23EbfmtuJGWd3j8-F3DSZh0\":*)",
+      "Bash(python3:*)"
     ]
   }
 }
