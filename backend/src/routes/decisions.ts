@@ -89,6 +89,16 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Account is deactivated" });
   }
 
+  const ownerAccess = await query(
+    `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
+    [dashboard_id, decision_owner]
+  );
+  const ownerIsDashboardOwner = await isDashboardOwner(decision_owner, dashboard_id);
+  const ownerRole = await getUserRole(decision_owner);
+  if (ownerAccess.rows.length === 0 && !ownerIsDashboardOwner && !isAdminRole(ownerRole)) {
+    return res.status(400).json({ error: "User does not have access to this dashboard. Please grant access before assigning." });
+  }
+
   const id = uuid();
   await query(
     `INSERT INTO decisions

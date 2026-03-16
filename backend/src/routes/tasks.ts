@@ -85,7 +85,8 @@ router.post("/", async (req, res) => {
     [dashboard_id, owner_id]
   );
   const ownerAccess = await isDashboardOwner(owner_id, dashboard_id);
-  if (access.rows.length === 0 && !ownerAccess) {
+  const ownerRole = await getUserRole(owner_id);
+  if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
     return res.status(400).json({ error: "User does not have access to this dashboard. Please grant access before assigning." });
   }
 
@@ -127,7 +128,8 @@ router.patch("/:id", async (req, res) => {
       [dashboardId, owner_id]
     );
     const ownerAccess = await isDashboardOwner(owner_id, dashboardId);
-    if (access.rows.length === 0 && !ownerAccess) {
+    const ownerRole = await getUserRole(owner_id);
+    if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
       return res.status(400).json({ error: "User does not have access to this dashboard. Please grant access before assigning." });
     }
   }
