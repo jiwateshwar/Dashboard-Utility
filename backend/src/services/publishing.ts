@@ -2,75 +2,123 @@ import dayjs from "dayjs";
 import { query } from "../db.js";
 
 export async function buildSnapshotContent(dashboardId: string, publishedOnly = false) {
-  const pfFilter = publishedOnly ? "AND t.publish_flag = true" : "";
-  const pfFilterR = publishedOnly ? "AND r.publish_flag = true" : "";
-  const pfFilterD = publishedOnly ? "AND d.publish_flag = true" : "";
+  // Recursive CTE: include child dashboards up to 2 levels deep.
+  // When publishedOnly=false: all non-archived items from root and children are included.
+  // When publishedOnly=true: only items with publish_flag=true (root and children alike).
+  const pf  = publishedOnly ? "AND t.publish_flag = true" : "";
+  const pfR = publishedOnly ? "AND r.publish_flag = true" : "";
+  const pfD = publishedOnly ? "AND d.publish_flag = true" : "";
 
   const tasks = await query(
-    `SELECT t.*, u.name as owner_name, c.name as category_name, a.account_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, 0 AS depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT dsh.id, c.depth + 1
+       FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
+       WHERE c.depth < 2
+     )
+     SELECT t.*, u.name as owner_name, cat.name as category_name, a.account_name
      FROM tasks t
+     JOIN child_dashboards cd ON t.dashboard_id = cd.id
      JOIN users u ON u.id = t.owner_id
-     LEFT JOIN categories c ON c.id = t.category_id
+     LEFT JOIN categories cat ON cat.id = t.category_id
      LEFT JOIN accounts a ON a.id = t.account_id
-     WHERE t.dashboard_id = $1 AND t.is_archived = false ${pfFilter}
-     ORDER BY c.name NULLS LAST, t.created_at`,
+     WHERE t.is_archived = false ${pf}
+     ORDER BY cd.depth, cat.name NULLS LAST, t.created_at`,
     [dashboardId]
   );
 
   const risks = await query(
-    `SELECT r.*, u.name as owner_name, a.account_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, 0 AS depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT dsh.id, c.depth + 1
+       FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
+       WHERE c.depth < 2
+     )
+     SELECT r.*, u.name as owner_name, a.account_name
      FROM risks r
+     JOIN child_dashboards cd ON r.dashboard_id = cd.id
      JOIN users u ON u.id = r.risk_owner
      LEFT JOIN accounts a ON a.id = r.account_id
-     WHERE r.dashboard_id = $1 AND r.is_archived = false ${pfFilterR}
-     ORDER BY r.impact_level DESC, r.created_at`,
+     WHERE r.is_archived = false ${pfR}
+     ORDER BY cd.depth, r.impact_level DESC, r.created_at`,
     [dashboardId]
   );
 
   const decisions = await query(
-    `SELECT d.*, u.name as owner_name, a.account_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, 0 AS depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT dsh.id, c.depth + 1
+       FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
+       WHERE c.depth < 2
+     )
+     SELECT d.*, u.name as owner_name, a.account_name
      FROM decisions d
+     JOIN child_dashboards cd ON d.dashboard_id = cd.id
      JOIN users u ON u.id = d.decision_owner
      LEFT JOIN accounts a ON a.id = d.account_id
-     WHERE d.dashboard_id = $1 AND d.is_archived = false ${pfFilterD}
-     ORDER BY d.decision_deadline`,
+     WHERE d.is_archived = false ${pfD}
+     ORDER BY cd.depth, d.decision_deadline`,
     [dashboardId]
   );
 
   const closedTasks = await query(
-    `SELECT t.*, u.name as owner_name, c.name as category_name, a.account_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, 0 AS depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT dsh.id, c.depth + 1
+       FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
+       WHERE c.depth < 2
+     )
+     SELECT t.*, u.name as owner_name, cat.name as category_name, a.account_name
      FROM tasks t
+     JOIN child_dashboards cd ON t.dashboard_id = cd.id
      JOIN users u ON u.id = t.owner_id
-     LEFT JOIN categories c ON c.id = t.category_id
+     LEFT JOIN categories cat ON cat.id = t.category_id
      LEFT JOIN accounts a ON a.id = t.account_id
-     WHERE t.dashboard_id = $1
-       AND t.status = 'Closed Accepted'
+     WHERE t.status = 'Closed Accepted'
        AND t.closure_approved_at >= now() - interval '45 days'
-       ${pfFilter}`,
+       ${pf}`,
     [dashboardId]
   );
 
   const closedRisks = await query(
-    `SELECT r.*, u.name as owner_name, a.account_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, 0 AS depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT dsh.id, c.depth + 1
+       FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
+       WHERE c.depth < 2
+     )
+     SELECT r.*, u.name as owner_name, a.account_name
      FROM risks r
+     JOIN child_dashboards cd ON r.dashboard_id = cd.id
      JOIN users u ON u.id = r.risk_owner
      LEFT JOIN accounts a ON a.id = r.account_id
-     WHERE r.dashboard_id = $1
-       AND r.status = 'Closed'
+     WHERE r.status = 'Closed'
        AND r.closed_at >= now() - interval '45 days'
-       ${pfFilterR}`,
+       ${pfR}`,
     [dashboardId]
   );
 
   const closedDecisions = await query(
-    `SELECT d.*, u.name as owner_name, a.account_name
+    `WITH RECURSIVE child_dashboards AS (
+       SELECT id, 0 AS depth FROM dashboards WHERE id = $1
+       UNION ALL
+       SELECT dsh.id, c.depth + 1
+       FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
+       WHERE c.depth < 2
+     )
+     SELECT d.*, u.name as owner_name, a.account_name
      FROM decisions d
+     JOIN child_dashboards cd ON d.dashboard_id = cd.id
      JOIN users u ON u.id = d.decision_owner
      LEFT JOIN accounts a ON a.id = d.account_id
-     WHERE d.dashboard_id = $1
-       AND d.status = 'Approved'
+     WHERE d.status = 'Approved'
        AND d.decision_date >= now() - interval '45 days'
-       ${pfFilterD}`,
+       ${pfD}`,
     [dashboardId]
   );
 
@@ -82,7 +130,7 @@ export async function buildSnapshotContent(dashboardId: string, publishedOnly = 
     },
     risks: {
       total: risks.rows.length,
-      red: risks.rows.filter((r) => r.impact_level === "Critical" || r.risk_score >= 6).length
+      red: risks.rows.filter((r) => r.impact_level === "Critical" || r.impact_level === "High").length
     },
     decisions: {
       total: decisions.rows.length,
