@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
+import { ComboBox } from "../components/ComboBox";
 
 type Mode = "view" | "edit";
 
@@ -78,7 +79,7 @@ function DeadlineChip({ deadline, label }: { deadline?: string; label?: string }
 }
 
 const EMPTY_TASK = {
-  category_id: "", account_id: "", item_details: "", owner_id: "",
+  category_id: "", account_id: "", item_details: "", owner_ids: [] as string[],
   target_date: "", sla_days: "", status: "Open", publish_flag: false
 };
 const EMPTY_RISK = {
@@ -154,6 +155,14 @@ export default function DashboardDetailPage() {
   const acctName = (aid: string) => accounts.find((a) => a.id === aid)?.account_name ?? "—";
   const catName = (cid: string) => categories.find((c) => c.id === cid)?.name ?? "—";
   const ownerName = (uid: string) => users.find((u) => u.id === uid)?.name ?? "—";
+  const ownerNames = (t: any): string => {
+    if (Array.isArray(t.owner_names) && t.owner_names.length > 0) return t.owner_names.join(", ");
+    if (Array.isArray(t.owner_ids) && t.owner_ids.length > 0) return t.owner_ids.map((id: string) => ownerName(id)).join(", ");
+    return ownerName(t.owner_id);
+  };
+
+  const accountComboOptions = useMemo(() => accountOptions.map((a) => ({ id: a.id, label: a.account_name })), [accountOptions]);
+  const userComboOptions = useMemo(() => users.map((u) => ({ id: u.id, label: u.name })), [users]);
 
   async function refresh() {
     if (!id) return;
@@ -206,6 +215,7 @@ export default function DashboardDetailPage() {
   async function createTask() {
     if (!id) return;
     setError(null);
+    if (newTask.owner_ids.length === 0) { setError("At least one owner is required"); return; }
     try {
       await api(`/tasks`, {
         method: "POST",
@@ -317,7 +327,7 @@ export default function DashboardDetailPage() {
       item_details: t.item_details,
       category_id: t.category_id,
       account_id: t.account_id,
-      owner_id: t.owner_id,
+      owner_ids: Array.isArray(t.owner_ids) ? t.owner_ids : (t.owner_id ? [t.owner_id] : []),
       target_date: t.target_date?.slice(0, 10) || "",
       sla_days: t.sla_days ?? "",
       status: t.status,
@@ -489,7 +499,7 @@ export default function DashboardDetailPage() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
                           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                            {ownerName(t.owner_id)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
+                            {ownerNames(t)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
                             {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
                           </div>
                         </div>
@@ -520,7 +530,7 @@ export default function DashboardDetailPage() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        {catName(t.category_id)} · {ownerName(t.owner_id)}
+                        {catName(t.category_id)} · {ownerNames(t)}
                         {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
                       </div>
                     </div>
@@ -549,7 +559,7 @@ export default function DashboardDetailPage() {
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        {catName(t.category_id)} · {ownerName(t.owner_id)} · Closed {fmt(t.closure_approved_at)}
+                        {catName(t.category_id)} · {ownerNames(t)} · Closed {fmt(t.closure_approved_at)}
                         {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
                       </div>
                     </div>
@@ -662,14 +672,19 @@ export default function DashboardDetailPage() {
                     <option value="">Category *</option>
                     {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
-                  <select className="select" value={newTask.account_id} onChange={(e) => setNewTask({ ...newTask, account_id: e.target.value })}>
-                    <option value="">Account *</option>
-                    {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                  </select>
-                  <select className="select" value={newTask.owner_id} onChange={(e) => setNewTask({ ...newTask, owner_id: e.target.value })}>
-                    <option value="">Owner *</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
+                  <ComboBox
+                    options={accountComboOptions}
+                    selectedIds={newTask.account_id ? [newTask.account_id] : []}
+                    onChange={(ids) => setNewTask({ ...newTask, account_id: ids[0] ?? "" })}
+                    placeholder="Account *"
+                  />
+                  <ComboBox
+                    options={userComboOptions}
+                    selectedIds={newTask.owner_ids}
+                    onChange={(ids) => setNewTask({ ...newTask, owner_ids: ids })}
+                    placeholder="Owner(s) *"
+                    multi
+                  />
                 </div>
                 <div className="form-row">
                   <input className="input" type="date" value={newTask.target_date} onChange={(e) => setNewTask({ ...newTask, target_date: e.target.value })} />
@@ -711,14 +726,19 @@ export default function DashboardDetailPage() {
                               <option value="">Category</option>
                               {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
-                            <select className="select" value={taskEditForm.account_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, account_id: e.target.value })}>
-                              <option value="">Account</option>
-                              {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                            </select>
-                            <select className="select" value={taskEditForm.owner_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, owner_id: e.target.value })}>
-                              <option value="">Owner</option>
-                              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
+                            <ComboBox
+                              options={accountComboOptions}
+                              selectedIds={taskEditForm.account_id ? [taskEditForm.account_id] : []}
+                              onChange={(ids) => setTaskEditForm({ ...taskEditForm, account_id: ids[0] ?? "" })}
+                              placeholder="Account"
+                            />
+                            <ComboBox
+                              options={userComboOptions}
+                              selectedIds={taskEditForm.owner_ids ?? []}
+                              onChange={(ids) => setTaskEditForm({ ...taskEditForm, owner_ids: ids })}
+                              placeholder="Owner(s)"
+                              multi
+                            />
                           </div>
                           <div className="form-row">
                             <input className="input" type="date" value={taskEditForm.target_date} onChange={(e) => setTaskEditForm({ ...taskEditForm, target_date: e.target.value })} />
@@ -750,7 +770,7 @@ export default function DashboardDetailPage() {
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
                             <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                              {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                              {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
                               {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
                             </div>
                           </div>
@@ -784,7 +804,7 @@ export default function DashboardDetailPage() {
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
                           <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                            {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                            {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
                             {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
                           </div>
                         </div>
@@ -812,7 +832,7 @@ export default function DashboardDetailPage() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
                         <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                          {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerName(t.owner_id)}
+                          {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
                           {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
                         </div>
                       </div>

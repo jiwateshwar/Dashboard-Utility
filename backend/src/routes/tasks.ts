@@ -36,7 +36,17 @@ router.get("/", async (req, res) => {
      )
      SELECT t.*, u.name as owner_name,
             cd.name as source_dashboard_name, cd.id as source_dashboard_id,
-            date_part('day', now() - t.created_at) as aging_days_calc
+            date_part('day', now() - t.created_at) as aging_days_calc,
+            COALESCE(
+              (SELECT array_agg(tow.user_id ORDER BY tow.user_id)
+               FROM task_owners tow WHERE tow.task_id = t.id),
+              ARRAY[t.owner_id]
+            ) as owner_ids,
+            COALESCE(
+              (SELECT array_agg(ou.name ORDER BY tow.user_id)
+               FROM task_owners tow JOIN users ou ON ou.id = tow.user_id WHERE tow.task_id = t.id),
+              ARRAY[u.name]
+            ) as owner_names
      FROM tasks t
      JOIN child_dashboards cd ON t.dashboard_id = cd.id
      JOIN users u ON u.id = t.owner_id
@@ -48,6 +58,7 @@ router.get("/", async (req, res) => {
            t.created_by = $2 OR
            t.owner_id = ANY($3) OR
            t.created_by = ANY($3) OR
+           EXISTS (SELECT 1 FROM task_owners to2 WHERE to2.task_id = t.id AND to2.user_id = $2) OR
            $4
          ))
          OR (cd.id != $1 AND t.publish_flag = true)
@@ -66,13 +77,15 @@ router.post("/", async (req, res) => {
     category_id,
     account_id,
     item_details,
-    owner_id,
+    owner_ids,
     target_date,
     sla_days,
     publish_flag
   } = req.body as any;
 
-  if (!dashboard_id || !category_id || !account_id || !item_details || !owner_id || !target_date) {
+  const ownerIdList: string[] = Array.isArray(owner_ids) ? owner_ids : (owner_ids ? [owner_ids] : []);
+
+  if (!dashboard_id || !category_id || !account_id || !item_details || ownerIdList.length === 0 || !target_date) {
     return res.status(400).json({ error: "Missing fields" });
   }
 
@@ -80,14 +93,19 @@ router.post("/", async (req, res) => {
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
-  const access = await query(
-    `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
-    [dashboard_id, owner_id]
-  );
-  const ownerAccess = await isDashboardOwner(owner_id, dashboard_id);
-  const ownerRole = await getUserRole(owner_id);
-  if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
-    return res.status(400).json({ error: "User does not have access to this dashboard. Please grant access before assigning." });
+  // Validate all owners have dashboard access
+  for (const oid of ownerIdList) {
+    const access = await query(
+      `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
+      [dashboard_id, oid]
+    );
+    const ownerAccess = await isDashboardOwner(oid, dashboard_id);
+    const ownerRole = await getUserRole(oid);
+    if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
+      const u = await query(`SELECT name FROM users WHERE id = $1`, [oid]);
+      const name = u.rows[0]?.name ?? oid;
+      return res.status(400).json({ error: `${name} does not have access to this dashboard. Please grant access before assigning.` });
+    }
   }
 
   const account = await query(`SELECT is_active FROM accounts WHERE id = $1`, [account_id]);
@@ -100,12 +118,18 @@ router.post("/", async (req, res) => {
   }
 
   const id = uuid();
+  // owner_id stores the primary (first) owner for backward compat with close-request logic
   await query(
     `INSERT INTO tasks
      (id, dashboard_id, category_id, account_id, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Open', $10)`,
-    [id, dashboard_id, category_id, account_id, item_details, owner_id, userId, target_date, sla_days || null, publish_flag ?? false]
+    [id, dashboard_id, category_id, account_id, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false]
   );
+
+  // Insert all owners into junction table
+  for (const oid of ownerIdList) {
+    await query(`INSERT INTO task_owners (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, oid]);
+  }
 
   res.json({ id });
 });
@@ -113,7 +137,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const { item_details, owner_id, target_date, publish_flag, status } = req.body as any;
+  const { item_details, owner_ids, target_date, publish_flag, status } = req.body as any;
 
   const task = await query(`SELECT dashboard_id, owner_id, created_by, status FROM tasks WHERE id = $1`, [id]);
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -122,17 +146,25 @@ router.patch("/:id", async (req, res) => {
   const canEdit = await canEditDashboard(userId, dashboardId);
   if (!canEdit) return res.status(403).json({ error: "No edit access" });
 
-  if (owner_id) {
-    const access = await query(
-      `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
-      [dashboardId, owner_id]
-    );
-    const ownerAccess = await isDashboardOwner(owner_id, dashboardId);
-    const ownerRole = await getUserRole(owner_id);
-    if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
-      return res.status(400).json({ error: "User does not have access to this dashboard. Please grant access before assigning." });
+  const ownerIdList: string[] | undefined = Array.isArray(owner_ids) ? owner_ids : undefined;
+
+  if (ownerIdList && ownerIdList.length > 0) {
+    for (const oid of ownerIdList) {
+      const access = await query(
+        `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
+        [dashboardId, oid]
+      );
+      const ownerAccess = await isDashboardOwner(oid, dashboardId);
+      const ownerRole = await getUserRole(oid);
+      if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
+        const u = await query(`SELECT name FROM users WHERE id = $1`, [oid]);
+        const name = u.rows[0]?.name ?? oid;
+        return res.status(400).json({ error: `${name} does not have access to this dashboard. Please grant access before assigning.` });
+      }
     }
   }
+
+  const primaryOwnerId = ownerIdList && ownerIdList.length > 0 ? ownerIdList[0] : null;
 
   await query(
     `UPDATE tasks
@@ -143,8 +175,15 @@ router.patch("/:id", async (req, res) => {
          status = COALESCE($6, status),
          updated_at = now()
      WHERE id = $1`,
-    [id, item_details || null, owner_id || null, target_date || null, publish_flag, status || null]
+    [id, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null]
   );
+
+  if (ownerIdList && ownerIdList.length > 0) {
+    await query(`DELETE FROM task_owners WHERE task_id = $1`, [id]);
+    for (const oid of ownerIdList) {
+      await query(`INSERT INTO task_owners (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, oid]);
+    }
+  }
 
   await logAudit({ entityType: "Task", entityId: id, changedBy: userId, oldValue: task.rows[0], newValue: req.body });
 
@@ -157,8 +196,9 @@ router.post("/:id/close-request", async (req, res) => {
   const task = await query(`SELECT dashboard_id, owner_id FROM tasks WHERE id = $1`, [id]);
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
 
-  if (task.rows[0].owner_id !== userId) {
-    return res.status(403).json({ error: "Only owner can request closure" });
+  const isOwner = await query(`SELECT 1 FROM task_owners WHERE task_id = $1 AND user_id = $2`, [id, userId]);
+  if (task.rows[0].owner_id !== userId && isOwner.rows.length === 0) {
+    return res.status(403).json({ error: "Only an owner can request closure" });
   }
 
   await query(
