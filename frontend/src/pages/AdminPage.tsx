@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access" | "signup-requests">("users");
+  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests">("users");
   const [signupRequests, setSignupRequests] = useState<any[]>([]);
+  const [accessRequests, setAccessRequests] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -12,6 +13,11 @@ export default function AdminPage() {
   const [accountDashboard, setAccountDashboard] = useState<string>("");
   const [categoryDashboard, setCategoryDashboard] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+
+  // Group management
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [groupDashboards, setGroupDashboards] = useState<any[]>([]);
+  const [groupDashboardsLoading, setGroupDashboardsLoading] = useState(false);
 
   const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", role: "User" });
   const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; manager_id: string; role: string; is_active: boolean } | null>(null);
@@ -27,16 +33,29 @@ export default function AdminPage() {
   async function loadAll() {
     setError(null);
     try {
-      const results = await Promise.allSettled([api("/users"), api("/dashboards"), api("/groups"), api("/accounts"), api("/admin/signup-requests")]);
+      const results = await Promise.allSettled([
+        api("/users"), api("/dashboards"), api("/groups"),
+        api("/accounts"), api("/admin/signup-requests"), api("/dashboards/access-requests")
+      ]);
       if (results[0].status === "fulfilled") setUsers(results[0].value as any[]);
       if (results[1].status === "fulfilled") setDashboards(results[1].value as any[]);
       if (results[2].status === "fulfilled") setGroups(results[2].value as any[]);
       if (results[3].status === "fulfilled") setAccounts(results[3].value as any[]);
       if (results[4].status === "fulfilled") setSignupRequests(results[4].value as any[]);
+      if (results[5].status === "fulfilled") setAccessRequests(results[5].value as any[]);
     } catch (err: any) { setError(err.message || "Failed to load data"); }
   }
 
   useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => {
+    if (!selectedGroupId) { setGroupDashboards([]); return; }
+    setGroupDashboardsLoading(true);
+    api(`/groups/${selectedGroupId}/dashboards`)
+      .then(setGroupDashboards)
+      .catch(() => setGroupDashboards([]))
+      .finally(() => setGroupDashboardsLoading(false));
+  }, [selectedGroupId]);
 
   useEffect(() => {
     if (!categoryDashboard) { setCategories([]); return; }
@@ -167,6 +186,41 @@ export default function AdminPage() {
     } catch (err: any) { setError(err.message); }
   }
 
+  async function toggleGroupDashboard(dashboardId: string, currentlyIn: boolean) {
+    if (!selectedGroupId) return;
+    setError(null);
+    try {
+      if (currentlyIn) {
+        await api(`/groups/${selectedGroupId}/dashboards/${dashboardId}`, { method: "DELETE" });
+      } else {
+        await api(`/groups/${selectedGroupId}/dashboards`, {
+          method: "POST",
+          body: JSON.stringify({ dashboard_ids: [dashboardId] })
+        });
+      }
+      const updated = await api(`/groups/${selectedGroupId}/dashboards`);
+      setGroupDashboards(updated);
+    } catch (err: any) { setError(err.message); }
+  }
+
+  async function handleApproveAccessRequest(id: string) {
+    setError(null);
+    try {
+      await api(`/dashboards/access-requests/${id}/approve`, { method: "POST" });
+      const updated = await api("/dashboards/access-requests");
+      setAccessRequests(updated);
+    } catch (err: any) { setError(err.message); }
+  }
+
+  async function handleRejectAccessRequest(id: string) {
+    setError(null);
+    try {
+      await api(`/dashboards/access-requests/${id}/reject`, { method: "POST" });
+      const updated = await api("/dashboards/access-requests");
+      setAccessRequests(updated);
+    } catch (err: any) { setError(err.message); }
+  }
+
   async function handleCreateAccount() {
     setError(null);
     try {
@@ -223,12 +277,22 @@ export default function AdminPage() {
         <button
           className={`button ${tab === "signup-requests" ? "" : "secondary"}`}
           onClick={() => setTab("signup-requests")}
-          style={{ position: "relative" }}
         >
           Signup Requests
           {signupRequests.filter((r) => r.status === "Pending").length > 0 && (
             <span style={{ marginLeft: 6, background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
               {signupRequests.filter((r) => r.status === "Pending").length}
+            </span>
+          )}
+        </button>
+        <button
+          className={`button ${tab === "access-requests" ? "" : "secondary"}`}
+          onClick={() => setTab("access-requests")}
+        >
+          Access Requests
+          {accessRequests.length > 0 && (
+            <span style={{ marginLeft: 6, background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+              {accessRequests.length}
             </span>
           )}
         </button>
@@ -408,32 +472,88 @@ export default function AdminPage() {
       )}
 
       {tab === "groups" && (
-        <div className="grid two">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Create group */}
           <div className="card">
-            <h3>Groups (Admin)</h3>
+            <h3 style={{ margin: "0 0 12px 0" }}>Create Group</h3>
             <div className="form-row">
               <input className="input" placeholder="Group name" value={newGroup.name} onChange={(e) => setNewGroup({ ...newGroup, name: e.target.value })} />
-              <input className="input" placeholder="Description" value={newGroup.description} onChange={(e) => setNewGroup({ ...newGroup, description: e.target.value })} />
+              <input className="input" placeholder="Description (optional)" value={newGroup.description} onChange={(e) => setNewGroup({ ...newGroup, description: e.target.value })} />
+              <button className="button" onClick={handleCreateGroup}>Create</button>
             </div>
-            <div className="inline-actions"><button className="button" onClick={handleCreateGroup}>Create Group</button></div>
-            <table className="table" style={{ marginTop: 12 }}>
-              <thead><tr><th>Name</th><th>Status</th></tr></thead>
-              <tbody>{groups.map((g) => <tr key={g.id}><td>{g.name}</td><td><span className="badge">{g.is_active ? "Active" : "Inactive"}</span></td></tr>)}</tbody>
-            </table>
           </div>
-          <div className="card">
-            <h3>Assign Group to Dashboard</h3>
-            <div className="form-row">
-              <select className="select" value={groupAssign.dashboard_id} onChange={(e) => setGroupAssign({ ...groupAssign, dashboard_id: e.target.value })}>
-                <option value="">Dashboard</option>
-                {dashboardOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              <select className="select" value={groupAssign.group_id} onChange={(e) => setGroupAssign({ ...groupAssign, group_id: e.target.value })}>
-                <option value="">Group</option>
-                {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-              </select>
+
+          {/* Group list + dashboard management */}
+          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "start" }}>
+            {/* Groups list */}
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontWeight: 600, fontSize: 13 }}>
+                Groups ({groups.length})
+              </div>
+              {groups.length === 0 ? (
+                <div style={{ padding: 16, color: "var(--muted)", fontSize: 13 }}>No groups yet</div>
+              ) : (
+                groups.map((g) => (
+                  <div
+                    key={g.id}
+                    onClick={() => setSelectedGroupId(g.id === selectedGroupId ? null : g.id)}
+                    style={{
+                      padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
+                      background: selectedGroupId === g.id ? "rgba(29,99,237,0.08)" : "transparent",
+                      borderLeft: selectedGroupId === g.id ? "3px solid #1d63ed" : "3px solid transparent"
+                    }}
+                  >
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{g.name}</div>
+                    {g.description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{g.description}</div>}
+                  </div>
+                ))
+              )}
             </div>
-            <button className="button" onClick={handleAssignGroup}>Assign</button>
+
+            {/* Dashboard membership for selected group */}
+            <div className="card">
+              {!selectedGroupId ? (
+                <div style={{ color: "var(--muted)", fontSize: 13, textAlign: "center", padding: 24 }}>
+                  Select a group to manage its dashboards
+                </div>
+              ) : groupDashboardsLoading ? (
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>Loading…</div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0 }}>
+                      {groups.find((g) => g.id === selectedGroupId)?.name} — Dashboards
+                    </h3>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      {groupDashboards.filter((d) => d.in_group).length} of {groupDashboards.length} in group
+                    </span>
+                  </div>
+                  {groupDashboards.length === 0 ? (
+                    <div style={{ color: "var(--muted)", fontSize: 13 }}>No dashboards</div>
+                  ) : (
+                    groupDashboards.map((d) => (
+                      <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid var(--border)" }}>
+                        <input
+                          type="checkbox"
+                          checked={d.in_group}
+                          onChange={() => toggleGroupDashboard(d.id, d.in_group)}
+                          style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, fontSize: 14 }}>{d.name}</div>
+                          {d.description && <div style={{ fontSize: 12, color: "var(--muted)" }}>{d.description}</div>}
+                        </div>
+                        {d.in_group && (
+                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(46,189,133,0.12)", color: "#2ebd85", fontWeight: 600, flexShrink: 0 }}>
+                            In group
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -541,6 +661,42 @@ export default function AdminPage() {
                     ) : (
                       <span style={{ fontSize: 12, color: "var(--muted)" }}>by {r.reviewed_by_name || "—"}</span>
                     )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "access-requests" && (
+        <div className="card">
+          <h3 style={{ margin: "0 0 16px 0" }}>Dashboard Access Requests</h3>
+          <table className="table">
+            <thead>
+              <tr><th>Dashboard</th><th>User</th><th>Email</th><th>Requested</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {accessRequests.length === 0 && (
+                <tr><td colSpan={5} style={{ color: "var(--muted)", textAlign: "center" }}>No pending access requests</td></tr>
+              )}
+              {accessRequests.map((r) => (
+                <tr key={r.id}>
+                  <td style={{ fontWeight: 500 }}>{r.dashboard_name}</td>
+                  <td>{r.user_name}</td>
+                  <td style={{ color: "var(--muted)" }}>{r.user_email}</td>
+                  <td style={{ color: "var(--muted)", fontSize: 13 }}>{new Date(r.created_at).toLocaleString()}</td>
+                  <td>
+                    <div className="inline-actions">
+                      <button className="button" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                        onClick={() => handleApproveAccessRequest(r.id)}>
+                        Approve
+                      </button>
+                      <button className="button secondary" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                        onClick={() => handleRejectAccessRequest(r.id)}>
+                        Reject
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -104,6 +104,7 @@ export default function DashboardDetailPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [accessRequests, setAccessRequests] = useState<any[]>([]);
 
   // Create form state
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -136,11 +137,13 @@ export default function DashboardDetailPage() {
       api(`/decisions?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/accounts`),
       api(`/categories?dashboard_id=${id}`),
-      api(`/users`)
+      api(`/users`),
+      api(`/dashboards/access-requests`).catch(() => [])
     ])
-      .then(([db, s, t, r, d, a, c, u]) => {
+      .then(([db, s, t, r, d, a, c, u, ar]) => {
         setDashboard(db); setSummary(s); setTasks(t); setRisks(r);
         setDecisions(d); setAccounts(a); setCategories(c); setUsers(u);
+        setAccessRequests((ar as any[]).filter((req: any) => req.dashboard_id === id));
       })
       .catch((err: any) => setError(err.message || "Failed to load"));
   }, [id, showArchived]);
@@ -154,14 +157,16 @@ export default function DashboardDetailPage() {
 
   async function refresh() {
     if (!id) return;
-    const [t, r, d, s, c] = await Promise.all([
+    const [t, r, d, s, c, ar] = await Promise.all([
       api(`/tasks?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/risks?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/decisions?dashboard_id=${id}&include_archived=${showArchived}`),
       api(`/dashboards/${id}/summary`),
-      api(`/categories?dashboard_id=${id}`)
+      api(`/categories?dashboard_id=${id}`),
+      api(`/dashboards/access-requests`).catch(() => [])
     ]);
     setTasks(t); setRisks(r); setDecisions(d); setSummary(s); setCategories(c);
+    setAccessRequests((ar as any[]).filter((req: any) => req.dashboard_id === id));
   }
 
   async function addCategory() {
@@ -1099,6 +1104,46 @@ export default function DashboardDetailPage() {
               </div>
             )}
           </div>
+
+          {/* ── ACCESS REQUESTS ── */}
+          {accessRequests.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <h3 style={{ margin: 0 }}>Access Requests</h3>
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{accessRequests.length} pending</span>
+              </div>
+              {accessRequests.map((req: any) => (
+                <div key={req.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{req.user_name}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                      {req.user_email} · Requested {req.created_at?.slice(0, 10)}
+                    </div>
+                  </div>
+                  <div className="inline-actions" style={{ flexShrink: 0 }}>
+                    <button className="button" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                      onClick={async () => {
+                        try {
+                          await api(`/dashboards/access-requests/${req.id}/approve`, { method: "POST" });
+                          await refresh();
+                        } catch (err: any) { setError(err.message); }
+                      }}>
+                      Approve
+                    </button>
+                    <button className="button secondary" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                      onClick={async () => {
+                        try {
+                          await api(`/dashboards/access-requests/${req.id}/reject`, { method: "POST" });
+                          await refresh();
+                        } catch (err: any) { setError(err.message); }
+                      }}>
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ── CATEGORIES ── */}
           <div className="card" style={{ marginBottom: 16 }}>

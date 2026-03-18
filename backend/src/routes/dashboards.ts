@@ -78,22 +78,111 @@ async function validateParent(dashboardId: string | null, parentId: string): Pro
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
+  const isAdmin = isAdminRole(role);
+
   const { rows } = await query(
     `SELECT d.*,
+       pd.name AS parent_dashboard_name,
        (SELECT json_agg(json_build_object('user_id', dbo2.user_id, 'name', u.name) ORDER BY u.name)
         FROM dashboard_owners dbo2 JOIN users u ON u.id = dbo2.user_id
-        WHERE dbo2.dashboard_id = d.id) as owners,
-       pd.name AS parent_dashboard_name
+        WHERE dbo2.dashboard_id = d.id) AS owners,
+       (SELECT g.name FROM groups g
+        JOIN dashboard_groups dg ON dg.group_id = g.id
+        WHERE dg.dashboard_id = d.id LIMIT 1) AS group_name,
+       EXISTS(SELECT 1 FROM dashboard_owners WHERE dashboard_id = d.id AND user_id = $1) AS is_owner,
+       EXISTS(SELECT 1 FROM dashboard_access WHERE dashboard_id = d.id AND user_id = $1 AND can_view = true) AS has_view_access,
+       EXISTS(SELECT 1 FROM dashboard_access_requests WHERE dashboard_id = d.id AND user_id = $1 AND status = 'Pending') AS has_pending_request
      FROM dashboards d
      LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
-     WHERE $1 OR d.id IN (
-       SELECT dashboard_id FROM dashboard_owners WHERE user_id = $2
-       UNION
-       SELECT dashboard_id FROM dashboard_access WHERE user_id = $2
-     )`,
-    [isAdminRole(role), userId]
+     ORDER BY d.name`,
+    [userId]
+  );
+
+  res.json(rows.map((r) => ({
+    ...r,
+    has_access: isAdmin || r.is_owner || r.has_view_access
+  })));
+});
+
+// ── Access requests (must be before /:id routes) ─────────────────
+
+router.get("/access-requests", async (req, res) => {
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+
+  if (isAdminRole(role)) {
+    const { rows } = await query(
+      `SELECT dar.*, d.name AS dashboard_name, u.name AS user_name, u.email AS user_email
+       FROM dashboard_access_requests dar
+       JOIN dashboards d ON d.id = dar.dashboard_id
+       JOIN users u ON u.id = dar.user_id
+       WHERE dar.status = 'Pending'
+       ORDER BY dar.created_at DESC`
+    );
+    return res.json(rows);
+  }
+
+  const { rows } = await query(
+    `SELECT dar.*, d.name AS dashboard_name, u.name AS user_name, u.email AS user_email
+     FROM dashboard_access_requests dar
+     JOIN dashboards d ON d.id = dar.dashboard_id
+     JOIN users u ON u.id = dar.user_id
+     WHERE dar.status = 'Pending'
+       AND dar.dashboard_id IN (
+         SELECT dashboard_id FROM dashboard_owners WHERE user_id = $1
+         UNION
+         SELECT id FROM dashboards WHERE primary_owner_id = $1 OR secondary_owner_id = $1
+       )
+     ORDER BY dar.created_at DESC`,
+    [userId]
   );
   res.json(rows);
+});
+
+router.post("/access-requests/:id/approve", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+
+  const { rows } = await query(`SELECT * FROM dashboard_access_requests WHERE id = $1`, [id]);
+  if (rows.length === 0) return res.status(404).json({ error: "Not found" });
+  const request = rows[0];
+
+  const role = await getUserRole(userId);
+  if (!isAdminRole(role) && !(await isDashboardOwner(userId, request.dashboard_id))) {
+    return res.status(403).json({ error: "Not allowed" });
+  }
+
+  await query(
+    `INSERT INTO dashboard_access (dashboard_id, user_id, can_view, can_edit)
+     VALUES ($1, $2, true, false)
+     ON CONFLICT (dashboard_id, user_id) DO UPDATE SET can_view = true`,
+    [request.dashboard_id, request.user_id]
+  );
+  await query(
+    `UPDATE dashboard_access_requests SET status = 'Approved', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
+    [id, userId]
+  );
+  res.json({ ok: true });
+});
+
+router.post("/access-requests/:id/reject", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+
+  const { rows } = await query(`SELECT * FROM dashboard_access_requests WHERE id = $1`, [id]);
+  if (rows.length === 0) return res.status(404).json({ error: "Not found" });
+  const request = rows[0];
+
+  const role = await getUserRole(userId);
+  if (!isAdminRole(role) && !(await isDashboardOwner(userId, request.dashboard_id))) {
+    return res.status(403).json({ error: "Not allowed" });
+  }
+
+  await query(
+    `UPDATE dashboard_access_requests SET status = 'Rejected', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
+    [id, userId]
+  );
+  res.json({ ok: true });
 });
 
 router.post("/", async (req, res) => {
@@ -131,6 +220,25 @@ router.post("/", async (req, res) => {
     [id]
   );
   res.json({ id });
+});
+
+router.post("/:id/request-access", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+
+  if (isAdminRole(role) || (await isDashboardOwner(userId, id)) || (await hasDashboardAccess(userId, id))) {
+    return res.status(400).json({ error: "You already have access to this dashboard" });
+  }
+
+  await query(
+    `INSERT INTO dashboard_access_requests (dashboard_id, user_id)
+     VALUES ($1, $2)
+     ON CONFLICT (dashboard_id, user_id)
+     DO UPDATE SET status = 'Pending', reviewed_by = NULL, reviewed_at = NULL`,
+    [id, userId]
+  );
+  res.json({ ok: true });
 });
 
 router.get("/:id", async (req, res) => {
