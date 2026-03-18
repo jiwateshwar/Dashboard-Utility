@@ -128,7 +128,7 @@ export default function FeedbackPage({ user }: { user: User }) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                 <span className={`tag ${STATUS_CLASS[item.status] ?? "amber"}`}>{item.status}</span>
-                {user.role === "Admin" && (
+                {(user.role === "Admin" || user.role === "SuperAdmin") && (
                   <select
                     className="select"
                     style={{ width: "auto" }}

@@ -2,14 +2,14 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { getUserRole, isDashboardOwner } from "../services/permission.js";
+import { getUserRole, isAdminRole, isDashboardOwner } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
 
 async function requireOwnerOrAdmin(userId: string, dashboardId: string) {
   const role = await getUserRole(userId);
-  if (role === "Admin") return true;
+  if (isAdminRole(role)) return true;
   return isDashboardOwner(userId, dashboardId);
 }
 

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { getUserRole } from "../services/permission.js";
+import { getUserRole, isAdminRole } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -37,7 +37,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
-  if (role !== "Admin") return res.status(403).json({ error: "Admin only" });
+  if (!isAdminRole(role)) return res.status(403).json({ error: "Admin only" });
   const { status } = req.body as any;
   if (!["Open", "In Review", "Done"].includes(status)) {
     return res.status(400).json({ error: "Invalid status" });

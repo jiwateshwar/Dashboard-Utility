@@ -2,7 +2,7 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
-import { getUserRole } from "../services/permission.js";
+import { getUserRole, isAdminRole } from "../services/permission.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -14,7 +14,7 @@ router.get("/", async (_req, res) => {
 
 router.post("/", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
-  if (role !== "Admin") return res.status(403).json({ error: "Admin only" });
+  if (!isAdminRole(role)) return res.status(403).json({ error: "Admin only" });
   const { name, description } = req.body as any;
   if (!name) return res.status(400).json({ error: "Name required" });
   const id = uuid();
@@ -27,7 +27,7 @@ router.post("/", async (req, res) => {
 
 router.post("/assign", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
-  if (role !== "Admin") return res.status(403).json({ error: "Admin only" });
+  if (!isAdminRole(role)) return res.status(403).json({ error: "Admin only" });
   const { dashboard_id, group_id } = req.body as any;
   if (!dashboard_id || !group_id) return res.status(400).json({ error: "Missing fields" });
   await query(
