@@ -42,7 +42,7 @@ export async function canEditDashboard(userId: string, dashboardId: string) {
 
 export async function canManageAccounts(userId: string, dashboardId?: string) {
   const role = await getUserRole(userId);
-  if (role === "Admin") return true;
+  if (isAdminRole(role)) return true;
   if (!dashboardId) return false;
   return isDashboardOwner(userId, dashboardId);
 }
