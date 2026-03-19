@@ -9,6 +9,9 @@ export default function AdminPage() {
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [pendingAccounts, setPendingAccounts] = useState<any[]>([]);
+  const [renamingAccountId, setRenamingAccountId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [categories, setCategories] = useState<any[]>([]);
   const [accountDashboard, setAccountDashboard] = useState<string>("");
   const [categoryDashboard, setCategoryDashboard] = useState<string>("");
@@ -35,7 +38,8 @@ export default function AdminPage() {
     try {
       const results = await Promise.allSettled([
         api("/users"), api("/dashboards"), api("/groups"),
-        api("/accounts"), api("/admin/signup-requests"), api("/dashboards/access-requests")
+        api("/accounts"), api("/admin/signup-requests"), api("/dashboards/access-requests"),
+        api("/accounts/pending")
       ]);
       if (results[0].status === "fulfilled") setUsers(results[0].value as any[]);
       if (results[1].status === "fulfilled") setDashboards(results[1].value as any[]);
@@ -43,6 +47,7 @@ export default function AdminPage() {
       if (results[3].status === "fulfilled") setAccounts(results[3].value as any[]);
       if (results[4].status === "fulfilled") setSignupRequests(results[4].value as any[]);
       if (results[5].status === "fulfilled") setAccessRequests(results[5].value as any[]);
+      if (results[6].status === "fulfilled") setPendingAccounts(results[6].value as any[]);
     } catch (err: any) { setError(err.message || "Failed to load data"); }
   }
 
@@ -271,9 +276,17 @@ export default function AdminPage() {
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
 
       <div className="inline-actions" style={{ marginBottom: 16 }}>
-        {(["users", "dashboards", "groups", "accounts", "categories", "access"] as const).map((t) => (
+        {(["users", "dashboards", "groups", "categories", "access"] as const).map((t) => (
           <button key={t} className={`button ${tab === t ? "" : "secondary"}`} onClick={() => setTab(t)} style={{ textTransform: "capitalize" }}>{t}</button>
         ))}
+        <button className={`button ${tab === "accounts" ? "" : "secondary"}`} onClick={() => setTab("accounts")}>
+          Accounts
+          {pendingAccounts.length > 0 && (
+            <span style={{ marginLeft: 6, background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+              {pendingAccounts.length}
+            </span>
+          )}
+        </button>
         <button
           className={`button ${tab === "signup-requests" ? "" : "secondary"}`}
           onClick={() => setTab("signup-requests")}
@@ -559,6 +572,87 @@ export default function AdminPage() {
       )}
 
       {tab === "accounts" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {pendingAccounts.length > 0 && (
+          <div className="card">
+            <h3 style={{ margin: "0 0 12px 0" }}>
+              Pending Account Requests
+              <span style={{ marginLeft: 8, background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 8px", fontSize: 12, fontWeight: 700 }}>
+                {pendingAccounts.length}
+              </span>
+            </h3>
+            <table className="table">
+              <thead>
+                <tr><th>Proposed Name</th><th>Proposed By</th><th>Submitted</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {pendingAccounts.map((a) => (
+                  <tr key={a.id}>
+                    <td style={{ fontWeight: 500 }}>{a.account_name}</td>
+                    <td style={{ color: "var(--muted)" }}>{a.proposed_by_name || "—"}</td>
+                    <td style={{ color: "var(--muted)", fontSize: 13 }}>{new Date(a.created_at).toLocaleString()}</td>
+                    <td>
+                      {renamingAccountId === a.id ? (
+                        <div className="inline-actions">
+                          <input
+                            className="input"
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            placeholder="New name"
+                            style={{ maxWidth: 180, height: 28, padding: "0 8px", fontSize: 13 }}
+                          />
+                          <button className="button" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                            onClick={async () => {
+                              try {
+                                await api(`/accounts/${a.id}/approve`, { method: "POST", body: JSON.stringify({ account_name: renameValue.trim() || undefined }) });
+                                setRenamingAccountId(null); setRenameValue("");
+                                const [all, pending] = await Promise.all([api("/accounts"), api("/accounts/pending")]);
+                                setAccounts(all as any[]); setPendingAccounts(pending as any[]);
+                              } catch (e: any) { setError(e.message); }
+                            }}>
+                            Approve with Rename
+                          </button>
+                          <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }}
+                            onClick={() => { setRenamingAccountId(null); setRenameValue(""); }}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="inline-actions">
+                          <button className="button" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                            onClick={async () => {
+                              try {
+                                await api(`/accounts/${a.id}/approve`, { method: "POST", body: JSON.stringify({}) });
+                                const [all, pending] = await Promise.all([api("/accounts"), api("/accounts/pending")]);
+                                setAccounts(all as any[]); setPendingAccounts(pending as any[]);
+                              } catch (e: any) { setError(e.message); }
+                            }}>
+                            Accept
+                          </button>
+                          <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }}
+                            onClick={() => { setRenamingAccountId(a.id); setRenameValue(a.account_name); }}>
+                            Rename &amp; Accept
+                          </button>
+                          <button className="button danger" style={{ height: 28, padding: "0 10px", fontSize: 12 }}
+                            onClick={async () => {
+                              if (!confirm(`Reject "${a.account_name}"? Tasks using this account will remain but the account will be deactivated.`)) return;
+                              try {
+                                await api(`/accounts/${a.id}/reject`, { method: "POST", body: JSON.stringify({}) });
+                                const [all, pending] = await Promise.all([api("/accounts"), api("/accounts/pending")]);
+                                setAccounts(all as any[]); setPendingAccounts(pending as any[]);
+                              } catch (e: any) { setError(e.message); }
+                            }}>
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className="card">
           <h3>Accounts (Admin/Owner)</h3>
           <div className="form-row">
@@ -574,7 +668,7 @@ export default function AdminPage() {
           <table className="table" style={{ marginTop: 12 }}>
             <thead><tr><th>Name</th><th>Type</th><th>Region</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
-              {accounts.map((a) => (
+              {accounts.filter((a) => !a.is_pending).map((a) => (
                 <tr key={a.id}>
                   <td>{a.account_name}</td><td>{a.account_type || "-"}</td><td>{a.region || "-"}</td>
                   <td><span className="badge">{a.is_active ? "Active" : "Inactive"}</span></td>
@@ -583,6 +677,7 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 

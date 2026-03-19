@@ -76,6 +76,7 @@ router.post("/", async (req, res) => {
     dashboard_id,
     category_id,
     account_id,
+    proposed_account_name,
     item_details,
     owner_ids,
     target_date,
@@ -85,7 +86,7 @@ router.post("/", async (req, res) => {
 
   const ownerIdList: string[] = Array.isArray(owner_ids) ? owner_ids : (owner_ids ? [owner_ids] : []);
 
-  if (!dashboard_id || !category_id || !account_id || !item_details || ownerIdList.length === 0 || !target_date) {
+  if (!dashboard_id || !category_id || (!account_id && !proposed_account_name) || !item_details || ownerIdList.length === 0 || !target_date) {
     return res.status(400).json({ error: "Missing fields" });
   }
 
@@ -108,7 +109,43 @@ router.post("/", async (req, res) => {
     }
   }
 
-  const account = await query(`SELECT is_active FROM accounts WHERE id = $1`, [account_id]);
+  // Resolve account — either existing id or proposed new name
+  let resolvedAccountId: string = account_id;
+  if (!resolvedAccountId && proposed_account_name) {
+    const trimmedName = proposed_account_name.trim();
+    // Check if account with this name already exists (case-insensitive)
+    const existing = await query(
+      `SELECT id FROM accounts WHERE LOWER(account_name) = LOWER($1) LIMIT 1`,
+      [trimmedName]
+    );
+    if (existing.rows.length > 0) {
+      resolvedAccountId = existing.rows[0].id;
+    } else {
+      // Create as pending account
+      const newAccId = uuid();
+      await query(
+        `INSERT INTO accounts (id, account_name, is_pending, proposed_by_user_id)
+         VALUES ($1, $2, true, $3)`,
+        [newAccId, trimmedName, userId]
+      );
+      resolvedAccountId = newAccId;
+      // Notify all admins and superadmins
+      const proposer = await query(`SELECT name FROM users WHERE id = $1`, [userId]);
+      const proposerName = proposer.rows[0]?.name ?? "A user";
+      const admins = await query(
+        `SELECT id FROM users WHERE role IN ('Admin', 'SuperAdmin') AND is_active = true`
+      );
+      for (const admin of admins.rows) {
+        await query(
+          `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
+          [uuid(), admin.id,
+            `${proposerName} proposed a new account: "${trimmedName}". Review it in Admin › Accounts.`]
+        );
+      }
+    }
+  }
+
+  const account = await query(`SELECT is_active FROM accounts WHERE id = $1`, [resolvedAccountId]);
   if (account.rows[0]?.is_active === false) {
     return res.status(400).json({ error: "Account is deactivated" });
   }
@@ -123,7 +160,7 @@ router.post("/", async (req, res) => {
     `INSERT INTO tasks
      (id, dashboard_id, category_id, account_id, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Open', $10)`,
-    [id, dashboard_id, category_id, account_id, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false]
+    [id, dashboard_id, category_id, resolvedAccountId, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false]
   );
 
   // Insert all owners into junction table

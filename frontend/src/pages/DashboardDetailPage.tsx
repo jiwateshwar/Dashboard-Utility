@@ -114,6 +114,8 @@ export default function DashboardDetailPage() {
   const [newTask, setNewTask] = useState({ ...EMPTY_TASK });
   const [newRisk, setNewRisk] = useState({ ...EMPTY_RISK });
   const [newDecision, setNewDecision] = useState({ ...EMPTY_DECISION });
+  // Tracks a proposed (not-yet-approved) account name for new tasks
+  const [proposedAccountName, setProposedAccountName] = useState<string>("");
 
   // Inline edit state — only one item open at a time per type
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -162,6 +164,11 @@ export default function DashboardDetailPage() {
   };
 
   const accountComboOptions = useMemo(() => accountOptions.map((a) => ({ id: a.id, label: a.account_name })), [accountOptions]);
+  // Extend options with proposed account so it shows as selected in the ComboBox
+  const accountComboOptionsWithProposed = useMemo(() => {
+    if (!proposedAccountName) return accountComboOptions;
+    return [...accountComboOptions, { id: "__proposed__", label: `${proposedAccountName} (pending approval)` }];
+  }, [accountComboOptions, proposedAccountName]);
   const userComboOptions = useMemo(() => users.map((u) => ({ id: u.id, label: u.name })), [users]);
 
   async function refresh() {
@@ -216,14 +223,23 @@ export default function DashboardDetailPage() {
     if (!id) return;
     setError(null);
     if (newTask.owner_ids.length === 0) { setError("At least one owner is required"); return; }
+    if (!newTask.account_id && !proposedAccountName) { setError("Account is required"); return; }
     try {
-      await api(`/tasks`, {
-        method: "POST",
-        body: JSON.stringify({ dashboard_id: id, ...newTask, sla_days: newTask.sla_days ? Number(newTask.sla_days) : undefined })
-      });
+      const body: any = {
+        dashboard_id: id, ...newTask,
+        sla_days: newTask.sla_days ? Number(newTask.sla_days) : undefined
+      };
+      if (proposedAccountName) {
+        body.account_id = undefined;
+        body.proposed_account_name = proposedAccountName;
+      }
+      await api(`/tasks`, { method: "POST", body: JSON.stringify(body) });
       setNewTask({ ...EMPTY_TASK });
+      setProposedAccountName("");
       setShowCreateTask(false);
-      await refresh();
+      // Refresh accounts too so the pending account appears if admin is also viewing
+      const [, a] = await Promise.all([refresh(), api(`/accounts`)]);
+      setAccounts(a as any[]);
     } catch (err: any) { setError(err.message); }
   }
 
@@ -659,7 +675,7 @@ export default function DashboardDetailPage() {
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <h3 style={{ margin: 0 }}>Tasks</h3>
-              <button className="button" onClick={() => { setShowCreateTask((v) => !v); setEditingTaskId(null); }}>
+              <button className="button" onClick={() => { setShowCreateTask((v) => !v); setEditingTaskId(null); setProposedAccountName(""); }}>
                 {showCreateTask ? "Cancel" : "+ Add Task"}
               </button>
             </div>
@@ -673,10 +689,12 @@ export default function DashboardDetailPage() {
                     {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <ComboBox
-                    options={accountComboOptions}
-                    selectedIds={newTask.account_id ? [newTask.account_id] : []}
-                    onChange={(ids) => setNewTask({ ...newTask, account_id: ids[0] ?? "" })}
+                    options={accountComboOptionsWithProposed}
+                    selectedIds={newTask.account_id ? [newTask.account_id] : (proposedAccountName ? ["__proposed__"] : [])}
+                    onChange={(ids) => { setProposedAccountName(""); setNewTask({ ...newTask, account_id: ids[0] ?? "" }); }}
                     placeholder="Account *"
+                    allowCreate
+                    onCreateOption={(name) => { setNewTask({ ...newTask, account_id: "" }); setProposedAccountName(name); }}
                   />
                   <ComboBox
                     options={userComboOptions}
@@ -699,7 +717,7 @@ export default function DashboardDetailPage() {
                     Publish
                   </label>
                   <button className="button" onClick={createTask}>Create Task</button>
-                  <button className="button secondary" onClick={() => setShowCreateTask(false)}>Cancel</button>
+                  <button className="button secondary" onClick={() => { setShowCreateTask(false); setProposedAccountName(""); }}>Cancel</button>
                 </div>
               </div>
             )}

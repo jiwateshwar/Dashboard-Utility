@@ -11,9 +11,11 @@ interface ComboBoxProps {
   onChange: (ids: string[]) => void;
   placeholder: string;
   multi?: boolean;
+  allowCreate?: boolean;
+  onCreateOption?: (label: string) => void;
 }
 
-export function ComboBox({ options, selectedIds, onChange, placeholder, multi = false }: ComboBoxProps) {
+export function ComboBox({ options, selectedIds, onChange, placeholder, multi = false, allowCreate = false, onCreateOption }: ComboBoxProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -32,6 +34,11 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
   const filtered = query.trim()
     ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
     : options;
+
+  // Whether to show the "add new" option
+  const trimmedQuery = query.trim();
+  const exactMatch = options.some((o) => o.label.toLowerCase() === trimmedQuery.toLowerCase());
+  const showCreateOption = allowCreate && trimmedQuery.length > 0 && !exactMatch;
 
   const selectedOptions = selectedIds.map((id) => options.find((o) => o.id === id)).filter(Boolean) as Option[];
 
@@ -60,8 +67,17 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
     }
   }
 
+  function handleCreate() {
+    if (!trimmedQuery || !onCreateOption) return;
+    onCreateOption(trimmedQuery);
+    setQuery(trimmedQuery);
+    setOpen(false);
+  }
+
   // For single-select: show the selected label in the input when not focused
   const inputValue = !multi && !open && selectedOptions.length > 0 ? selectedOptions[0].label : query;
+
+  const dropdownOpen = open && (filtered.length > 0 || showCreateOption);
 
   return (
     <div ref={containerRef} style={{ position: "relative", flex: 1, minWidth: 0 }}>
@@ -92,7 +108,7 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
         autoComplete="off"
         style={{ width: "100%", boxSizing: "border-box" }}
       />
-      {open && filtered.length > 0 && (
+      {dropdownOpen && (
         <div style={{
           position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
           background: "var(--surface, #fff)", border: "1px solid var(--border, #d1d5db)",
@@ -117,6 +133,22 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
               </div>
             );
           })}
+          {showCreateOption && (
+            <div
+              onMouseDown={(e) => { e.preventDefault(); handleCreate(); }}
+              style={{
+                padding: "8px 12px", fontSize: 13, cursor: "pointer",
+                color: "var(--accent, #2563eb)", fontWeight: 500,
+                borderTop: filtered.length > 0 ? "1px solid var(--border, #d1d5db)" : undefined,
+                display: "flex", alignItems: "center", gap: 6
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover, #f3f4f6)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+            >
+              <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
+              Add "{trimmedQuery}" as new account
+            </div>
+          )}
         </div>
       )}
     </div>
