@@ -514,7 +514,8 @@ export default function DashboardDetailPage() {
                     catTasks.map((t) => (
                       <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
                         <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
+                          {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                          <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
                           <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                             {ownerNames(t)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
                             {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
@@ -531,6 +532,40 @@ export default function DashboardDetailPage() {
               );
             })}
 
+            {/* Other Tasks: own tasks whose category is not in any active category card */}
+            {(() => {
+              const activeCatIds = new Set(categoryOptions.map((c) => c.id));
+              const uncategorised = ownTasks.filter(
+                (t) => !activeCatIds.has(t.category_id) && t.status !== "Closed Accepted"
+              );
+              if (uncategorised.length === 0) return null;
+              return (
+                <div className="card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <h3 style={{ margin: 0 }}>Other Tasks</h3>
+                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                      {uncategorised.length} {uncategorised.length === 1 ? "item" : "items"}
+                    </span>
+                  </div>
+                  {uncategorised.map((t) => (
+                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                        <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                          {ownerNames(t)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        <AgingChip targetDate={t.target_date} status={t.status} />
+                        <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Virtual: Planned for coming fortnight */}
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: plannedFortnight.length > 0 ? 10 : 0 }}>
@@ -545,7 +580,8 @@ export default function DashboardDetailPage() {
                 plannedFortnight.map((t) => (
                   <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
+                      {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                      <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                         {catName(t.category_id)} · {ownerNames(t)}
                         {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
@@ -574,7 +610,8 @@ export default function DashboardDetailPage() {
                 closedFortnight.map((t) => (
                   <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
+                      {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                      <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
                       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                         {catName(t.category_id)} · {ownerNames(t)} · Closed {fmt(t.closure_approved_at)}
                         {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
