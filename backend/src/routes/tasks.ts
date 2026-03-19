@@ -77,6 +77,7 @@ router.post("/", async (req, res) => {
     category_id,
     account_id,
     proposed_account_name,
+    title,
     item_details,
     owner_ids,
     target_date,
@@ -158,9 +159,9 @@ router.post("/", async (req, res) => {
   // owner_id stores the primary (first) owner for backward compat with close-request logic
   await query(
     `INSERT INTO tasks
-     (id, dashboard_id, category_id, account_id, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Open', $10)`,
-    [id, dashboard_id, category_id, resolvedAccountId, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false]
+     (id, dashboard_id, category_id, account_id, title, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Open', $11)`,
+    [id, dashboard_id, category_id, resolvedAccountId, title || null, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false]
   );
 
   // Insert all owners into junction table
@@ -174,7 +175,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const { item_details, owner_ids, target_date, publish_flag, status } = req.body as any;
+  const { title, item_details, owner_ids, target_date, publish_flag, status } = req.body as any;
 
   const task = await query(`SELECT dashboard_id, owner_id, created_by, status FROM tasks WHERE id = $1`, [id]);
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -205,14 +206,15 @@ router.patch("/:id", async (req, res) => {
 
   await query(
     `UPDATE tasks
-     SET item_details = COALESCE($2, item_details),
-         owner_id = COALESCE($3, owner_id),
-         target_date = COALESCE($4, target_date),
-         publish_flag = COALESCE($5, publish_flag),
-         status = COALESCE($6, status),
+     SET title = COALESCE($2, title),
+         item_details = COALESCE($3, item_details),
+         owner_id = COALESCE($4, owner_id),
+         target_date = COALESCE($5, target_date),
+         publish_flag = COALESCE($6, publish_flag),
+         status = COALESCE($7, status),
          updated_at = now()
      WHERE id = $1`,
-    [id, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null]
+    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null]
   );
 
   if (ownerIdList && ownerIdList.length > 0) {

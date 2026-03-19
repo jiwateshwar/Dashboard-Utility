@@ -79,7 +79,7 @@ function DeadlineChip({ deadline, label }: { deadline?: string; label?: string }
 }
 
 const EMPTY_TASK = {
-  category_id: "", account_id: "", item_details: "", owner_ids: [] as string[],
+  category_id: "", account_id: "", title: "", item_details: "", owner_ids: [] as string[],
   target_date: "", sla_days: "", status: "Open", publish_flag: false
 };
 const EMPTY_RISK = {
@@ -340,6 +340,7 @@ export default function DashboardDetailPage() {
   function openEditTask(t: any) {
     setEditingTaskId(t.id);
     setTaskEditForm({
+      title: t.title ?? "",
       item_details: t.item_details,
       category_id: t.category_id,
       account_id: t.account_id,
@@ -708,6 +709,9 @@ export default function DashboardDetailPage() {
                   <input className="input" type="date" value={newTask.target_date} onChange={(e) => setNewTask({ ...newTask, target_date: e.target.value })} />
                   <input className="input" placeholder="SLA days" value={newTask.sla_days} onChange={(e) => setNewTask({ ...newTask, sla_days: e.target.value })} />
                 </div>
+                <input className="input" placeholder="Title *" value={newTask.title}
+                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                  style={{ marginBottom: 8, fontWeight: 600 }} />
                 <textarea className="input" rows={2} placeholder="Task details *" value={newTask.item_details}
                   onChange={(e) => setNewTask({ ...newTask, item_details: e.target.value })}
                   style={{ resize: "vertical", marginBottom: 10 }} />
@@ -768,6 +772,9 @@ export default function DashboardDetailPage() {
                               <option value="Closed Accepted">Closed Accepted</option>
                             </select>
                           </div>
+                          <input className="input" placeholder="Title" value={taskEditForm.title ?? ""}
+                            onChange={(e) => setTaskEditForm({ ...taskEditForm, title: e.target.value })}
+                            style={{ marginBottom: 8, fontWeight: 600 }} />
                           <textarea className="input" rows={3} value={taskEditForm.item_details}
                             onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
                             style={{ resize: "vertical", marginBottom: 10 }} />
@@ -786,7 +793,8 @@ export default function DashboardDetailPage() {
                       ) : (
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
                           <div style={{ minWidth: 0, flex: 1 }}>
-                            <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                            {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                            <div style={{ fontSize: 13, marginBottom: 3 }}>{t.item_details}</div>
                             <div style={{ fontSize: 12, color: "var(--muted)" }}>
                               {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
                               {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
@@ -820,7 +828,8 @@ export default function DashboardDetailPage() {
                     <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                          {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                          <div style={{ fontSize: 13, marginBottom: 3 }}>{t.item_details}</div>
                           <div style={{ fontSize: 12, color: "var(--muted)" }}>
                             {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
                             {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
