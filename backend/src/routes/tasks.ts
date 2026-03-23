@@ -95,18 +95,17 @@ router.post("/", async (req, res) => {
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
-  // Validate all owners have dashboard access
+  // Auto-grant dashboard access (can_view + can_edit) to any owner who doesn't already have it
   for (const oid of ownerIdList) {
-    const access = await query(
-      `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
-      [dashboard_id, oid]
-    );
     const ownerAccess = await isDashboardOwner(oid, dashboard_id);
     const ownerRole = await getUserRole(oid);
-    if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
-      const u = await query(`SELECT name FROM users WHERE id = $1`, [oid]);
-      const name = u.rows[0]?.name ?? oid;
-      return res.status(400).json({ error: `${name} does not have access to this dashboard. Please grant access before assigning.` });
+    if (!isAdminRole(ownerRole) && !ownerAccess) {
+      await query(
+        `INSERT INTO dashboard_access (dashboard_id, user_id, can_view, can_edit)
+         VALUES ($1, $2, true, true)
+         ON CONFLICT (dashboard_id, user_id) DO UPDATE SET can_view = true, can_edit = true`,
+        [dashboard_id, oid]
+      );
     }
   }
 
@@ -188,16 +187,15 @@ router.patch("/:id", async (req, res) => {
 
   if (ownerIdList && ownerIdList.length > 0) {
     for (const oid of ownerIdList) {
-      const access = await query(
-        `SELECT 1 FROM dashboard_access WHERE dashboard_id = $1 AND user_id = $2 AND can_view = true`,
-        [dashboardId, oid]
-      );
       const ownerAccess = await isDashboardOwner(oid, dashboardId);
       const ownerRole = await getUserRole(oid);
-      if (access.rows.length === 0 && !ownerAccess && !isAdminRole(ownerRole)) {
-        const u = await query(`SELECT name FROM users WHERE id = $1`, [oid]);
-        const name = u.rows[0]?.name ?? oid;
-        return res.status(400).json({ error: `${name} does not have access to this dashboard. Please grant access before assigning.` });
+      if (!isAdminRole(ownerRole) && !ownerAccess) {
+        await query(
+          `INSERT INTO dashboard_access (dashboard_id, user_id, can_view, can_edit)
+           VALUES ($1, $2, true, true)
+           ON CONFLICT (dashboard_id, user_id) DO UPDATE SET can_view = true, can_edit = true`,
+          [dashboardId, oid]
+        );
       }
     }
   }

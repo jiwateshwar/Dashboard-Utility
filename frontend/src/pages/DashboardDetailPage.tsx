@@ -624,6 +624,35 @@ export default function DashboardDetailPage() {
             </div>
           </div>
 
+          {/* Items from child dashboards — Overview (read-only) */}
+          {inheritedTasks.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <h3 style={{ margin: 0 }}>Items from Child Dashboards</h3>
+                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                  {inheritedTasks.length} {inheritedTasks.length === 1 ? "item" : "items"}
+                </span>
+              </div>
+              {inheritedTasks.map((t) => (
+                <div key={t.id} style={{ borderTop: "1px solid var(--border)", padding: "9px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                    <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                      {catName(t.category_id)} · {acctName(t.account_id)} · {ownerNames(t)}
+                      {t.target_date && <> · Due {fmt(t.target_date)}</>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <AgingChip targetDate={t.target_date} status={t.status} />
+                    <SourceBadge name={t.source_dashboard_name} />
+                    <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Decisions — read-only */}
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -894,7 +923,8 @@ export default function DashboardDetailPage() {
                   <div key={t.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{t.item_details}</div>
+                        {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                        <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500, marginBottom: 3 }}>{t.item_details}</div>
                         <div style={{ fontSize: 12, color: "var(--muted)" }}>
                           {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
                           {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
