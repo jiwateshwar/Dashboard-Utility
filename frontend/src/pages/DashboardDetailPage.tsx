@@ -130,6 +130,11 @@ export default function DashboardDetailPage() {
   const [categoryEditName, setCategoryEditName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
 
+  // Delete request state
+  const [showDeleteRequest, setShowDeleteRequest] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteRequestPending, setDeleteRequestPending] = useState(false);
+
   useEffect(() => {
     if (!id) return;
     Promise.all([
@@ -141,12 +146,14 @@ export default function DashboardDetailPage() {
       api(`/accounts`),
       api(`/categories?dashboard_id=${id}`),
       api(`/users`),
-      api(`/dashboards/access-requests`).catch(() => [])
+      api(`/dashboards/access-requests`).catch(() => []),
+      api(`/dashboards/delete-requests`).catch(() => [])
     ])
-      .then(([db, s, t, r, d, a, c, u, ar]) => {
+      .then(([db, s, t, r, d, a, c, u, ar, dr]) => {
         setDashboard(db); setSummary(s); setTasks(t); setRisks(r);
         setDecisions(d); setAccounts(a); setCategories(c); setUsers(u);
         setAccessRequests((ar as any[]).filter((req: any) => req.dashboard_id === id));
+        setDeleteRequestPending((dr as any[]).some((req: any) => req.dashboard_id === id));
       })
       .catch((err: any) => setError(err.message || "Failed to load"));
   }, [id, showArchived]);
@@ -183,6 +190,19 @@ export default function DashboardDetailPage() {
     ]);
     setTasks(t); setRisks(r); setDecisions(d); setSummary(s); setCategories(c);
     setAccessRequests((ar as any[]).filter((req: any) => req.dashboard_id === id));
+  }
+
+  async function submitDeleteRequest() {
+    if (!id) return;
+    try {
+      await api(`/dashboards/${id}/delete-request`, {
+        method: "POST",
+        body: JSON.stringify({ reason: deleteReason.trim() || undefined })
+      });
+      setDeleteRequestPending(true);
+      setShowDeleteRequest(false);
+      setDeleteReason("");
+    } catch (err: any) { setError(err.message); }
   }
 
   async function addCategory() {
@@ -1318,6 +1338,44 @@ export default function DashboardDetailPage() {
               </button>
             </div>
           </div>
+
+          {/* Danger zone — owners only */}
+          {dashboard?.is_owner && (
+            <div className="card" style={{ marginBottom: 16, borderColor: "#fca5a5" }}>
+              <h3 style={{ margin: "0 0 10px 0", color: "#dc2626" }}>Danger Zone</h3>
+              {deleteRequestPending ? (
+                <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                  A deletion request is pending SuperAdmin approval.
+                </div>
+              ) : showDeleteRequest ? (
+                <div>
+                  <p style={{ fontSize: 13, color: "var(--muted)", margin: "0 0 10px 0" }}>
+                    Submitting this request will notify all SuperAdmins. The dashboard will only be deactivated after a SuperAdmin approves the request.
+                  </p>
+                  <textarea
+                    className="input"
+                    rows={2}
+                    placeholder="Reason for deletion (optional)"
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    style={{ resize: "vertical", marginBottom: 10 }}
+                  />
+                  <div className="inline-actions">
+                    <button className="button danger" onClick={submitDeleteRequest}>
+                      Submit Deletion Request
+                    </button>
+                    <button className="button secondary" onClick={() => { setShowDeleteRequest(false); setDeleteReason(""); }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button className="button danger" onClick={() => setShowDeleteRequest(true)}>
+                  Request Dashboard Deletion
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

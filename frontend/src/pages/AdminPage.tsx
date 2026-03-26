@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests">("users");
+  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests" | "delete-requests">("users");
+  const [me, setMe] = useState<any>(null);
   const [signupRequests, setSignupRequests] = useState<any[]>([]);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
+  const [deleteRequests, setDeleteRequests] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -39,7 +41,7 @@ export default function AdminPage() {
       const results = await Promise.allSettled([
         api("/users"), api("/dashboards"), api("/groups"),
         api("/accounts"), api("/admin/signup-requests"), api("/dashboards/access-requests"),
-        api("/accounts/pending")
+        api("/accounts/pending"), api("/auth/me"), api("/dashboards/delete-requests")
       ]);
       if (results[0].status === "fulfilled") setUsers(results[0].value as any[]);
       if (results[1].status === "fulfilled") setDashboards(results[1].value as any[]);
@@ -48,6 +50,8 @@ export default function AdminPage() {
       if (results[4].status === "fulfilled") setSignupRequests(results[4].value as any[]);
       if (results[5].status === "fulfilled") setAccessRequests(results[5].value as any[]);
       if (results[6].status === "fulfilled") setPendingAccounts(results[6].value as any[]);
+      if (results[7].status === "fulfilled") setMe(results[7].value);
+      if (results[8].status === "fulfilled") setDeleteRequests(results[8].value as any[]);
     } catch (err: any) { setError(err.message || "Failed to load data"); }
   }
 
@@ -226,6 +230,22 @@ export default function AdminPage() {
     } catch (err: any) { setError(err.message); }
   }
 
+  async function handleApproveDeleteRequest(id: string) {
+    setError(null);
+    try {
+      await api(`/dashboards/delete-requests/${id}/approve`, { method: "POST" });
+      setDeleteRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: any) { setError(err.message); }
+  }
+
+  async function handleRejectDeleteRequest(id: string) {
+    setError(null);
+    try {
+      await api(`/dashboards/delete-requests/${id}/reject`, { method: "POST" });
+      setDeleteRequests((prev) => prev.filter((r) => r.id !== id));
+    } catch (err: any) { setError(err.message); }
+  }
+
   async function handleCreateAccount() {
     setError(null);
     try {
@@ -309,6 +329,19 @@ export default function AdminPage() {
             </span>
           )}
         </button>
+        {me?.role === "SuperAdmin" && (
+          <button
+            className={`button ${tab === "delete-requests" ? "" : "secondary"}`}
+            onClick={() => setTab("delete-requests")}
+          >
+            Delete Requests
+            {deleteRequests.length > 0 && (
+              <span style={{ marginLeft: 6, background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+                {deleteRequests.length}
+              </span>
+            )}
+          </button>
+        )}
       </div>
 
       {tab === "users" && (
@@ -789,6 +822,42 @@ export default function AdminPage() {
                       </button>
                       <button className="button secondary" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
                         onClick={() => handleRejectAccessRequest(r.id)}>
+                        Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "delete-requests" && (
+        <div className="card">
+          <h3 style={{ margin: "0 0 16px 0" }}>Dashboard Deletion Requests</h3>
+          <table className="table">
+            <thead>
+              <tr><th>Dashboard</th><th>Requested By</th><th>Reason</th><th>Requested</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {deleteRequests.length === 0 && (
+                <tr><td colSpan={5} style={{ color: "var(--muted)", textAlign: "center" }}>No pending deletion requests</td></tr>
+              )}
+              {deleteRequests.map((r) => (
+                <tr key={r.id}>
+                  <td style={{ fontWeight: 500 }}>{r.dashboard_name}</td>
+                  <td>{r.requested_by_name}</td>
+                  <td style={{ color: "var(--muted)", fontSize: 13 }}>{r.reason || "—"}</td>
+                  <td style={{ color: "var(--muted)", fontSize: 13 }}>{new Date(r.created_at).toLocaleString()}</td>
+                  <td>
+                    <div className="inline-actions">
+                      <button className="button danger" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                        onClick={() => handleApproveDeleteRequest(r.id)}>
+                        Approve &amp; Deactivate
+                      </button>
+                      <button className="button secondary" style={{ height: 28, padding: "0 12px", fontSize: 12 }}
+                        onClick={() => handleRejectDeleteRequest(r.id)}>
                         Reject
                       </button>
                     </div>

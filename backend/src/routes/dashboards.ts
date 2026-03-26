@@ -185,6 +185,59 @@ router.post("/access-requests/:id/reject", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Dashboard delete requests ────────────────────────────────────
+
+router.get("/delete-requests", async (req, res) => {
+  const role = await getUserRole(req.session.userId!);
+  if (role !== "SuperAdmin") return res.status(403).json({ error: "SuperAdmin only" });
+  const { rows } = await query(
+    `SELECT ddr.*, d.name AS dashboard_name, u.name AS requested_by_name
+     FROM dashboard_delete_requests ddr
+     JOIN dashboards d ON d.id = ddr.dashboard_id
+     JOIN users u ON u.id = ddr.requested_by
+     WHERE ddr.status = 'Pending'
+     ORDER BY ddr.created_at DESC`
+  );
+  res.json(rows);
+});
+
+router.post("/delete-requests/:reqId/approve", async (req, res) => {
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+  if (role !== "SuperAdmin") return res.status(403).json({ error: "SuperAdmin only" });
+  const { rows } = await query(`SELECT * FROM dashboard_delete_requests WHERE id = $1`, [req.params.reqId]);
+  if (!rows[0]) return res.status(404).json({ error: "Not found" });
+  const dr = rows[0];
+  await query(`UPDATE dashboards SET is_active = false, updated_at = now() WHERE id = $1`, [dr.dashboard_id]);
+  await query(
+    `UPDATE dashboard_delete_requests SET status = 'Approved', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
+    [dr.id, userId]
+  );
+  await query(
+    `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
+    [uuid(), dr.requested_by, `Your request to delete dashboard "${(await query(`SELECT name FROM dashboards WHERE id = $1`, [dr.dashboard_id])).rows[0]?.name}" has been approved.`]
+  );
+  res.json({ ok: true });
+});
+
+router.post("/delete-requests/:reqId/reject", async (req, res) => {
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+  if (role !== "SuperAdmin") return res.status(403).json({ error: "SuperAdmin only" });
+  const { rows } = await query(`SELECT * FROM dashboard_delete_requests WHERE id = $1`, [req.params.reqId]);
+  if (!rows[0]) return res.status(404).json({ error: "Not found" });
+  const dr = rows[0];
+  await query(
+    `UPDATE dashboard_delete_requests SET status = 'Rejected', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
+    [dr.id, userId]
+  );
+  await query(
+    `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
+    [uuid(), dr.requested_by, `Your request to delete dashboard "${(await query(`SELECT name FROM dashboards WHERE id = $1`, [dr.dashboard_id])).rows[0]?.name}" has been rejected.`]
+  );
+  res.json({ ok: true });
+});
+
 router.post("/", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
   if (!isAdminRole(role)) {
@@ -238,6 +291,34 @@ router.post("/:id/request-access", async (req, res) => {
      DO UPDATE SET status = 'Pending', reviewed_by = NULL, reviewed_at = NULL`,
     [id, userId]
   );
+  res.json({ ok: true });
+});
+
+router.post("/:id/delete-request", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+  if (!isAdminRole(role) && !(await isDashboardOwner(userId, id))) {
+    return res.status(403).json({ error: "Only dashboard owners can request deletion" });
+  }
+  const { reason } = req.body as any;
+  await query(
+    `INSERT INTO dashboard_delete_requests (dashboard_id, requested_by, reason)
+     VALUES ($1, $2, $3)
+     ON CONFLICT DO NOTHING`,
+    [id, userId, reason || null]
+  );
+  const db = await query(`SELECT name FROM dashboards WHERE id = $1`, [id]);
+  const dbName = db.rows[0]?.name ?? "a dashboard";
+  const requester = await query(`SELECT name FROM users WHERE id = $1`, [userId]);
+  const requesterName = requester.rows[0]?.name ?? "A user";
+  const superAdmins = await query(`SELECT id FROM users WHERE role = 'SuperAdmin' AND is_active = true`);
+  for (const sa of superAdmins.rows) {
+    await query(
+      `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
+      [uuid(), sa.id, `${requesterName} has requested deletion of dashboard "${dbName}". Review it in Admin › Delete Requests.`]
+    );
+  }
   res.json({ ok: true });
 });
 
