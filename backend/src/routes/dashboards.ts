@@ -327,7 +327,8 @@ router.get("/:id", async (req, res) => {
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
   const { rows } = await query(
-    `SELECT d.*, pd.name AS parent_dashboard_name
+    `SELECT d.*, pd.name AS parent_dashboard_name,
+       EXISTS(SELECT 1 FROM dashboard_owners WHERE dashboard_id = d.id AND user_id = $3) AS is_owner
      FROM dashboards d
      LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
      WHERE d.id = $1 AND ($2 OR d.id IN (
