@@ -122,11 +122,12 @@ export async function buildSnapshotContent(dashboardId: string, publishedOnly = 
     [dashboardId]
   );
 
+  const openTaskRows = tasks.rows.filter((t) => t.status !== "Closed Accepted" && t.status !== "Closed Pending Approval");
   const summary = {
     tasks: {
-      total: tasks.rows.length,
-      open: tasks.rows.filter((t) => t.status === "Open").length,
-      inProgress: tasks.rows.filter((t) => t.status === "In Progress").length
+      total: openTaskRows.length,
+      open: openTaskRows.filter((t) => t.status === "Open").length,
+      inProgress: openTaskRows.filter((t) => t.status === "In Progress").length
     },
     risks: {
       total: risks.rows.length,
@@ -144,7 +145,7 @@ export async function buildSnapshotContent(dashboardId: string, publishedOnly = 
     tasks: tasks.rows,
     risks: risks.rows,
     decisions: decisions.rows,
-    openTasks: tasks.rows.filter((t) => t.status !== "Closed Accepted" && t.status !== "Closed Pending Approval"),
+    openTasks: openTaskRows,
     closedTasks: closedTasks.rows,
     closedRisks: closedRisks.rows,
     closedDecisions: closedDecisions.rows

@@ -57,9 +57,14 @@ function statusBadge(status: string) {
                        background:${s.bg};color:${s.color};white-space:nowrap;">${status}</span>`;
 }
 
-function fmt(d?: string) {
+function fmt(d?: string | Date) {
   if (!d) return "—";
-  return dayjs(d.slice(0, 10)).format("DD MMM YYYY");
+  return dayjs(d).format("DD MMM YYYY");
+}
+
+function toDateStr(d?: string | Date): string {
+  if (!d) return "";
+  return dayjs(d).format("YYYY-MM-DD");
 }
 
 function card(content: string) {
@@ -246,10 +251,10 @@ function plannedFortnightSection(openTasks: any[]) {
   const items = openTasks
     .filter((t) => {
       if (!t.target_date || (t.status !== "Open" && t.status !== "In Progress")) return false;
-      const due = t.target_date.slice(0, 10);
+      const due = toDateStr(t.target_date);
       return due >= today && due <= in14;
     })
-    .sort((a: any, b: any) => a.target_date.localeCompare(b.target_date));
+    .sort((a: any, b: any) => toDateStr(a.target_date).localeCompare(toDateStr(b.target_date)));
 
   if (items.length === 0) {
     return card(`${sectionHeader("Planned for Coming Fortnight", 0)}<div style="font-size:13px;color:${MUTED};padding:8px 0;">No open tasks due in the next 14 days.</div>`);
@@ -268,11 +273,11 @@ function recentlyClosedSection(closedTasks: any[]) {
     .filter((t) => {
       const closedAt = t.closure_approved_at ?? t.updated_at;
       if (!closedAt) return false;
-      return closedAt.slice(0, 10) >= ago14;
+      return toDateStr(closedAt) >= ago14;
     })
     .sort((a: any, b: any) => {
-      const ad = (a.closure_approved_at ?? a.updated_at ?? "");
-      const bd = (b.closure_approved_at ?? b.updated_at ?? "");
+      const ad = toDateStr(a.closure_approved_at ?? a.updated_at);
+      const bd = toDateStr(b.closure_approved_at ?? b.updated_at);
       return bd.localeCompare(ad);
     });
 
