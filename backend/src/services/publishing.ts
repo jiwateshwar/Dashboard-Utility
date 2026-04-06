@@ -79,7 +79,7 @@ export async function buildSnapshotContent(dashboardId: string, publishedOnly = 
      LEFT JOIN categories cat ON cat.id = t.category_id
      LEFT JOIN accounts a ON a.id = t.account_id
      WHERE t.status = 'Closed Accepted'
-       AND t.closure_approved_at >= now() - interval '45 days'
+       AND COALESCE(t.closure_approved_at, t.updated_at) >= now() - interval '45 days'
        ${pf}`,
     [dashboardId]
   );
