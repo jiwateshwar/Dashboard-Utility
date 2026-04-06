@@ -174,7 +174,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const { title, item_details, owner_ids, target_date, publish_flag, status } = req.body as any;
+  const { title, item_details, owner_ids, target_date, publish_flag, status, category_id } = req.body as any;
 
   const task = await query(`SELECT dashboard_id, owner_id, created_by, status FROM tasks WHERE id = $1`, [id]);
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -210,9 +210,10 @@ router.patch("/:id", async (req, res) => {
          target_date = COALESCE($5, target_date),
          publish_flag = COALESCE($6, publish_flag),
          status = COALESCE($7, status),
+         category_id = COALESCE($8, category_id),
          updated_at = now()
      WHERE id = $1`,
-    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null]
+    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null]
   );
 
   if (ownerIdList && ownerIdList.length > 0) {
