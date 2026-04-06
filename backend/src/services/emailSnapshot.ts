@@ -22,6 +22,7 @@ const MUTED = "#6b7280";
 const BG = "#f7f8fa";
 const CARD_BG = "#ffffff";
 const TEXT = "#1f2937";
+const ROW_ALT = "#f9fafb";
 
 function sectionHeader(title: string, count?: number) {
   const badge = count !== undefined
@@ -31,14 +32,6 @@ function sectionHeader(title: string, count?: number) {
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:${MUTED};
                 padding-bottom:6px;border-bottom:1px solid ${BORDER};margin:24px 0 12px;">
       ${title}${badge}
-    </div>`;
-}
-
-function categoryHeader(name: string) {
-  return `
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;
-                color:${MUTED};padding:10px 0 4px;">
-      ${name}
     </div>`;
 }
 
@@ -70,57 +63,111 @@ function fmt(d?: string) {
   return dayjs(d.slice(0, 10)).format("DD MMM YYYY");
 }
 
-function taskRow(t: any) {
-  return `
-    <div style="border-top:1px solid ${BORDER};padding:10px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:500;font-size:14px;color:${TEXT};margin-bottom:3px;">${t.item_details ?? "—"}</div>
-        <div style="font-size:12px;color:${MUTED};">
-          ${t.account_name ?? "—"} &nbsp;·&nbsp; ${t.owner_name ?? "—"}
-          ${t.target_date ? ` &nbsp;·&nbsp; Due ${fmt(t.target_date)}` : ""}
-        </div>
-      </div>
-      <div style="flex-shrink:0;">${statusBadge(t.status)}</div>
-    </div>`;
-}
-
-function riskRow(r: any) {
-  return `
-    <div style="border-top:1px solid ${BORDER};padding:10px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:500;font-size:14px;color:${TEXT};margin-bottom:3px;">${r.risk_title ?? "—"}</div>
-        <div style="font-size:12px;color:${MUTED};">
-          ${r.account_name ?? "—"} &nbsp;·&nbsp; ${r.owner_name ?? "—"}
-          &nbsp;·&nbsp; Impact: ${r.impact_level ?? "—"} &nbsp;·&nbsp; Probability: ${r.probability ?? "—"}
-          ${r.target_mitigation_date ? ` &nbsp;·&nbsp; Target: ${fmt(r.target_mitigation_date)}` : ""}
-        </div>
-        ${r.risk_description ? `<div style="font-size:12px;color:${MUTED};margin-top:3px;">${r.risk_description}</div>` : ""}
-      </div>
-      <div style="flex-shrink:0;">${statusBadge(r.impact_level)}</div>
-    </div>`;
-}
-
-function decisionRow(d: any) {
-  return `
-    <div style="border-top:1px solid ${BORDER};padding:10px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-weight:500;font-size:14px;color:${TEXT};margin-bottom:3px;">${d.decision_title ?? "—"}</div>
-        <div style="font-size:12px;color:${MUTED};">
-          ${d.account_name ?? "—"} &nbsp;·&nbsp; ${d.owner_name ?? "—"}
-          ${d.decision_deadline ? ` &nbsp;·&nbsp; Deadline: ${fmt(d.decision_deadline)}` : ""}
-          ${d.impact_area ? ` &nbsp;·&nbsp; ${d.impact_area}` : ""}
-        </div>
-        ${d.decision_context ? `<div style="font-size:12px;color:${MUTED};margin-top:3px;">${d.decision_context}</div>` : ""}
-      </div>
-      <div style="flex-shrink:0;">${statusBadge(d.status)}</div>
-    </div>`;
-}
-
 function card(content: string) {
   return `<div style="background:${CARD_BG};border:1px solid ${BORDER};border-radius:8px;padding:16px 20px;margin-bottom:16px;">${content}</div>`;
 }
 
-function summaryCard(content: SnapshotContent, date: string) {
+// ── Row renderers returning <tr> elements ─────────────────────────────────────
+
+function taskRow(t: any, idx: number): string {
+  const bg = idx % 2 === 1 ? ROW_ALT : CARD_BG;
+  const desc = t.title
+    ? `<div style="font-weight:700;font-size:13px;color:${TEXT};margin-bottom:2px;">${t.title}</div>
+       <div style="font-size:13px;color:${TEXT};">${t.item_details ?? "—"}</div>`
+    : `<div style="font-size:14px;font-weight:500;color:${TEXT};">${t.item_details ?? "—"}</div>`;
+  return `
+    <tr>
+      <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;">${desc}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.account_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.owner_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">${t.target_date ? fmt(t.target_date) : "—"}</td>
+      <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge(t.status)}</td>
+    </tr>`;
+}
+
+function riskRow(r: any, idx: number): string {
+  const bg = idx % 2 === 1 ? ROW_ALT : CARD_BG;
+  const desc = r.risk_description
+    ? `<div style="font-size:14px;font-weight:500;color:${TEXT};margin-bottom:2px;">${r.risk_title ?? "—"}</div>
+       <div style="font-size:12px;color:${MUTED};">${r.risk_description}</div>`
+    : `<div style="font-size:14px;font-weight:500;color:${TEXT};">${r.risk_title ?? "—"}</div>`;
+  return `
+    <tr>
+      <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;">${desc}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${r.account_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${r.owner_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${r.probability ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">${r.target_mitigation_date ? fmt(r.target_mitigation_date) : "—"}</td>
+      <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge(r.impact_level)}</td>
+    </tr>`;
+}
+
+function decisionRow(d: any, idx: number): string {
+  const bg = idx % 2 === 1 ? ROW_ALT : CARD_BG;
+  const desc = d.decision_context
+    ? `<div style="font-size:14px;font-weight:500;color:${TEXT};margin-bottom:2px;">${d.decision_title ?? "—"}</div>
+       <div style="font-size:12px;color:${MUTED};">${d.decision_context}</div>`
+    : `<div style="font-size:14px;font-weight:500;color:${TEXT};">${d.decision_title ?? "—"}</div>`;
+  return `
+    <tr>
+      <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;">${desc}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${d.account_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${d.owner_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">${d.decision_deadline ? fmt(d.decision_deadline) : "—"}</td>
+      <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge(d.status)}</td>
+    </tr>`;
+}
+
+// ── Table header rows ─────────────────────────────────────────────────────────
+
+function taskTableHead() {
+  const th = (label: string, align = "left", extra = "") =>
+    `<th style="text-align:${align};font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px ${align === "right" ? "8px" : "0"};letter-spacing:0.04em;border-bottom:1px solid ${BORDER};${extra}">${label}</th>`;
+  return `<tr>
+    ${th("Description", "left", "padding-right:8px;")}
+    ${th("Account")}
+    ${th("Owner")}
+    ${th("Due")}
+    ${th("Status", "right")}
+  </tr>`;
+}
+
+function riskTableHead() {
+  const th = (label: string, align = "left", extra = "") =>
+    `<th style="text-align:${align};font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px ${align === "right" ? "8px" : "0"};letter-spacing:0.04em;border-bottom:1px solid ${BORDER};${extra}">${label}</th>`;
+  return `<tr>
+    ${th("Risk", "left", "padding-right:8px;")}
+    ${th("Account")}
+    ${th("Owner")}
+    ${th("Probability")}
+    ${th("Target")}
+    ${th("Impact", "right")}
+  </tr>`;
+}
+
+function decisionTableHead() {
+  const th = (label: string, align = "left", extra = "") =>
+    `<th style="text-align:${align};font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px ${align === "right" ? "8px" : "0"};letter-spacing:0.04em;border-bottom:1px solid ${BORDER};${extra}">${label}</th>`;
+  return `<tr>
+    ${th("Decision", "left", "padding-right:8px;")}
+    ${th("Account")}
+    ${th("Owner")}
+    ${th("Deadline")}
+    ${th("Status", "right")}
+  </tr>`;
+}
+
+// ── Category label row spanning all columns ───────────────────────────────────
+
+function catRow(name: string, colspan: number) {
+  return `<tr><td colspan="${colspan}" style="padding:14px 0 4px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${MUTED};">${name}</div>
+  </td></tr>`;
+}
+
+// ── Section builders ──────────────────────────────────────────────────────────
+
+function summaryCard(content: SnapshotContent) {
   const { tasks, risks, decisions } = content.summary;
   return card(`
     <div style="display:flex;gap:24px;flex-wrap:wrap;">
@@ -151,7 +198,6 @@ function tasksSection(openTasks: any[]) {
     return card(`${sectionHeader("Tasks", 0)}<div style="font-size:13px;color:${MUTED};padding:8px 0;">No open tasks.</div>`);
   }
 
-  // Group by category
   const byCategory: Record<string, any[]> = {};
   for (const t of openTasks) {
     const cat = t.category_name ?? "Uncategorised";
@@ -159,18 +205,30 @@ function tasksSection(openTasks: any[]) {
     byCategory[cat].push(t);
   }
 
+  let rowIdx = 0;
   const rows = Object.entries(byCategory).map(([cat, items]) =>
-    categoryHeader(cat) + items.map(taskRow).join("")
+    catRow(cat, 5) + items.map((t) => taskRow(t, rowIdx++)).join("")
   ).join("");
 
-  return card(sectionHeader("Tasks", openTasks.length) + rows);
+  const table = `<table style="width:100%;border-collapse:collapse;">
+    <thead>${taskTableHead()}</thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  return card(sectionHeader("Tasks", openTasks.length) + table);
 }
 
 function risksSection(risks: any[]) {
   if (risks.length === 0) {
     return card(`${sectionHeader("Risks", 0)}<div style="font-size:13px;color:${MUTED};padding:8px 0;">No active risks.</div>`);
   }
-  return card(sectionHeader("Risks", risks.length) + risks.map(riskRow).join(""));
+
+  const table = `<table style="width:100%;border-collapse:collapse;">
+    <thead>${riskTableHead()}</thead>
+    <tbody>${risks.map((r, i) => riskRow(r, i)).join("")}</tbody>
+  </table>`;
+
+  return card(sectionHeader("Risks", risks.length) + table);
 }
 
 function decisionsSection(decisions: any[]) {
@@ -178,7 +236,13 @@ function decisionsSection(decisions: any[]) {
   if (open.length === 0) {
     return card(`${sectionHeader("Decisions Needed", 0)}<div style="font-size:13px;color:${MUTED};padding:8px 0;">No pending decisions.</div>`);
   }
-  return card(sectionHeader("Decisions Needed", open.length) + open.map(decisionRow).join(""));
+
+  const table = `<table style="width:100%;border-collapse:collapse;">
+    <thead>${decisionTableHead()}</thead>
+    <tbody>${open.map((d, i) => decisionRow(d, i)).join("")}</tbody>
+  </table>`;
+
+  return card(sectionHeader("Decisions Needed", open.length) + table);
 }
 
 function closedSection(closedTasks: any[], closedRisks: any[], closedDecisions: any[]) {
@@ -186,41 +250,52 @@ function closedSection(closedTasks: any[], closedRisks: any[], closedDecisions: 
   if (total === 0) return "";
 
   let inner = sectionHeader("Closed in Last 45 Days", total);
+  let rowIdx = 0;
 
   if (closedTasks.length > 0) {
-    inner += categoryHeader("Tasks");
-    inner += closedTasks.map((t) => `
-      <div style="border-top:1px solid ${BORDER};padding:10px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:500;font-size:14px;color:${TEXT};margin-bottom:3px;">${t.item_details ?? "—"}</div>
-          <div style="font-size:12px;color:${MUTED};">${t.account_name ?? "—"} &nbsp;·&nbsp; ${t.owner_name ?? "—"} &nbsp;·&nbsp; Closed ${fmt(t.closure_approved_at)}</div>
-        </div>
-        ${statusBadge("Closed Accepted")}
-      </div>`).join("");
+    const rows = closedTasks.map((t) => {
+      const bg = rowIdx++ % 2 === 1 ? ROW_ALT : CARD_BG;
+      const desc = t.title
+        ? `<div style="font-weight:700;font-size:13px;color:${TEXT};margin-bottom:2px;">${t.title}</div>
+           <div style="font-size:13px;color:${TEXT};">${t.item_details ?? "—"}</div>`
+        : `<div style="font-size:14px;font-weight:500;color:${TEXT};">${t.item_details ?? "—"}</div>`;
+      return `<tr>
+        <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;">${desc}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.account_name ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.owner_name ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">Closed ${fmt(t.closure_approved_at)}</td>
+        <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge("Closed Accepted")}</td>
+      </tr>`;
+    }).join("");
+    inner += `<table style="width:100%;border-collapse:collapse;">${catRow("Tasks", 5)}<tbody>${rows}</tbody></table>`;
   }
 
   if (closedRisks.length > 0) {
-    inner += categoryHeader("Risks");
-    inner += closedRisks.map((r) => `
-      <div style="border-top:1px solid ${BORDER};padding:10px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:500;font-size:14px;color:${TEXT};margin-bottom:3px;">${r.risk_title ?? "—"}</div>
-          <div style="font-size:12px;color:${MUTED};">${r.account_name ?? "—"} &nbsp;·&nbsp; ${r.owner_name ?? "—"} &nbsp;·&nbsp; Closed ${fmt(r.closed_at)}</div>
-        </div>
-        ${statusBadge("Closed Accepted")}
-      </div>`).join("");
+    const rows = closedRisks.map((r, _i) => {
+      const bg = rowIdx++ % 2 === 1 ? ROW_ALT : CARD_BG;
+      return `<tr>
+        <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;font-size:14px;font-weight:500;color:${TEXT};">${r.risk_title ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${r.account_name ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${r.owner_name ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">Closed ${fmt(r.closed_at)}</td>
+        <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge("Closed Accepted")}</td>
+      </tr>`;
+    }).join("");
+    inner += `<table style="width:100%;border-collapse:collapse;">${catRow("Risks", 5)}<tbody>${rows}</tbody></table>`;
   }
 
   if (closedDecisions.length > 0) {
-    inner += categoryHeader("Decisions");
-    inner += closedDecisions.map((d) => `
-      <div style="border-top:1px solid ${BORDER};padding:10px 0;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
-        <div style="flex:1;min-width:0;">
-          <div style="font-weight:500;font-size:14px;color:${TEXT};margin-bottom:3px;">${d.decision_title ?? "—"}</div>
-          <div style="font-size:12px;color:${MUTED};">${d.account_name ?? "—"} &nbsp;·&nbsp; ${d.owner_name ?? "—"} &nbsp;·&nbsp; Approved ${fmt(d.decision_date)}</div>
-        </div>
-        ${statusBadge("Approved")}
-      </div>`).join("");
+    const rows = closedDecisions.map((d) => {
+      const bg = rowIdx++ % 2 === 1 ? ROW_ALT : CARD_BG;
+      return `<tr>
+        <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;font-size:14px;font-weight:500;color:${TEXT};">${d.decision_title ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${d.account_name ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${d.owner_name ?? "—"}</td>
+        <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">Approved ${fmt(d.decision_date)}</td>
+        <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge("Approved")}</td>
+      </tr>`;
+    }).join("");
+    inner += `<table style="width:100%;border-collapse:collapse;">${catRow("Decisions", 5)}<tbody>${rows}</tbody></table>`;
   }
 
   return card(inner);
@@ -250,7 +325,7 @@ export function buildEml(params: { dashboardName: string; date: string; content:
     </div>
 
     <!-- Summary -->
-    ${summaryCard(content, date)}
+    ${summaryCard(content)}
 
     <!-- Tasks -->
     ${tasksSection(openTasks)}
