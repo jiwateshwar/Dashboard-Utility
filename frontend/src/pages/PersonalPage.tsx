@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { ComboBox } from "../components/ComboBox";
 
-type Tab = "overview" | "escalations" | "approvals";
+type Tab = "overview" | "escalations" | "approvals" | "manage";
 
 const TASK_STATUS_CLASS: Record<string, string> = {
   Open: "amber",
@@ -64,10 +65,86 @@ function CountBadge({ count }: { count: number }) {
 export default function PersonalPage() {
   const [data, setData] = useState<any>(null);
   const [tab, setTab] = useState<Tab>("overview");
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [taskEditForm, setTaskEditForm] = useState<any>({});
+  const [taskError, setTaskError] = useState<string | null>(null);
 
   useEffect(() => {
-    api("/personal").then(setData);
+    Promise.all([
+      api("/personal"),
+      api("/accounts"),
+      api("/users"),
+    ]).then(([personal, accts, usrs]) => {
+      setData(personal);
+      setAccounts(accts);
+      setUsers(usrs);
+    });
   }, []);
+
+  const accountComboOptions = useMemo(
+    () => accounts.filter((a) => a.is_active !== false).map((a) => ({ id: a.id, label: a.account_name })),
+    [accounts]
+  );
+  const userComboOptions = useMemo(
+    () => users.map((u) => ({ id: u.id, label: u.name })),
+    [users]
+  );
+
+  function acctName(id?: string) {
+    return accounts.find((a) => a.id === id)?.account_name ?? "—";
+  }
+
+  function openEditTask(t: any) {
+    setEditingTaskId(t.id);
+    setTaskError(null);
+    setTaskEditForm({
+      title: t.title ?? "",
+      item_details: t.item_details,
+      account_id: t.account_id,
+      owner_ids: Array.isArray(t.owner_ids) ? t.owner_ids : (t.owner_id ? [t.owner_id] : []),
+      target_date: t.target_date?.slice(0, 10) || "",
+      sla_days: t.sla_days ?? "",
+      status: t.status,
+      publish_flag: t.publish_flag,
+    });
+  }
+
+  async function refreshPersonal() {
+    const personal = await api("/personal");
+    setData(personal);
+  }
+
+  async function saveTask(taskId: string) {
+    try {
+      await api(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(taskEditForm) });
+      setEditingTaskId(null);
+      await refreshPersonal();
+    } catch (err: any) { setTaskError(err.message); }
+  }
+
+  async function requestTaskClose(taskId: string) {
+    try {
+      await api(`/tasks/${taskId}/close-request`, { method: "POST" });
+      await refreshPersonal();
+    } catch (err: any) { setTaskError(err.message); }
+  }
+
+  async function approveTask(taskId: string) {
+    try {
+      await api(`/tasks/${taskId}/approve`, { method: "POST" });
+      await refreshPersonal();
+    } catch (err: any) { setTaskError(err.message); }
+  }
+
+  async function deleteTask(taskId: string) {
+    if (!confirm("Permanently delete this task?")) return;
+    try {
+      await api(`/tasks/${taskId}`, { method: "DELETE" });
+      await refreshPersonal();
+    } catch (err: any) { setTaskError(err.message); }
+  }
 
   if (!data) return <div className="dashboard-shell"><div>Loading...</div></div>;
 
@@ -126,6 +203,9 @@ export default function PersonalPage() {
         </button>
         <button className={`tab${tab === "approvals" ? " active" : ""}`} onClick={() => setTab("approvals")}>
           Pending Approvals<CountBadge count={data.pendingApprovals.length} />
+        </button>
+        <button className={`tab${tab === "manage" ? " active" : ""}`} onClick={() => setTab("manage")}>
+          Manage
         </button>
       </div>
 
@@ -284,6 +364,90 @@ export default function PersonalPage() {
                   </div>
                 </div>
                 <span className="tag amber">Awaiting Approval</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── MANAGE ── */}
+      {tab === "manage" && (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>My Tasks</h3>
+            <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+              {data.tasks.length} {data.tasks.length === 1 ? "item" : "items"}
+            </span>
+          </div>
+          {taskError && <div style={{ color: "red", marginBottom: 8, fontSize: 13 }}>{taskError}</div>}
+          {data.tasks.length === 0 ? (
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks assigned</div>
+          ) : (
+            data.tasks.map((t: any) => (
+              <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
+                {editingTaskId === t.id ? (
+                  <div style={{ padding: "14px 0" }}>
+                    <div className="form-row">
+                      <ComboBox
+                        options={accountComboOptions}
+                        selectedIds={taskEditForm.account_id ? [taskEditForm.account_id] : []}
+                        onChange={(ids) => setTaskEditForm({ ...taskEditForm, account_id: ids[0] ?? "" })}
+                        placeholder="Account"
+                      />
+                      <ComboBox
+                        options={userComboOptions}
+                        selectedIds={taskEditForm.owner_ids ?? []}
+                        onChange={(ids) => setTaskEditForm({ ...taskEditForm, owner_ids: ids })}
+                        placeholder="Owner(s)"
+                        multi
+                      />
+                    </div>
+                    <div className="form-row">
+                      <input className="input" type="date" value={taskEditForm.target_date} onChange={(e) => setTaskEditForm({ ...taskEditForm, target_date: e.target.value })} />
+                      <input className="input" placeholder="SLA days" value={taskEditForm.sla_days ?? ""} onChange={(e) => setTaskEditForm({ ...taskEditForm, sla_days: e.target.value })} />
+                      <select className="select" value={taskEditForm.status} onChange={(e) => setTaskEditForm({ ...taskEditForm, status: e.target.value })}>
+                        <option value="Open">Open</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Closed Pending Approval">Closed Pending Approval</option>
+                        <option value="Closed Accepted">Closed Accepted</option>
+                      </select>
+                    </div>
+                    <input className="input" placeholder="Title" value={taskEditForm.title ?? ""}
+                      onChange={(e) => setTaskEditForm({ ...taskEditForm, title: e.target.value })}
+                      style={{ marginBottom: 8, fontWeight: 600 }} />
+                    <textarea className="input" rows={3} value={taskEditForm.item_details}
+                      onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
+                      style={{ resize: "vertical", marginBottom: 10 }} />
+                    <div className="inline-actions">
+                      <label style={{ fontSize: 13, cursor: "pointer" }}>
+                        <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
+                        Publish
+                      </label>
+                      <button className="button" onClick={() => saveTask(t.id)}>Save</button>
+                      <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
+                      <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
+                      <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
+                      <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+                      <div style={{ fontSize: t.title ? 13 : 14, marginBottom: 3 }}>{t.item_details}</div>
+                      <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                        {acctName(t.account_id)}
+                        {t.target_date && <> · Due {fmt(t.target_date)}</>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <AgingChip targetDate={t.target_date} status={t.status} />
+                      <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+                      <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
+                      <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           )}
