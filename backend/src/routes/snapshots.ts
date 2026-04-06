@@ -55,21 +55,23 @@ router.get("/:id/email", async (req, res) => {
   const userId = req.session.userId!;
 
   const snap = await query(
-    `SELECT ps.*, d.name as dashboard_name
+    `SELECT ps.*, d.name as dashboard_name, d.description as dashboard_description,
+            pd.name as parent_dashboard_name
      FROM publishing_snapshots ps
      JOIN dashboards d ON d.id = ps.dashboard_id
+     LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
      WHERE ps.id = $1`,
     [id]
   );
   if (snap.rows.length === 0) return res.status(404).json({ error: "Snapshot not found" });
 
-  const { dashboard_id, dashboard_name, content_json, cycle_date } = snap.rows[0];
+  const { dashboard_id, dashboard_name, dashboard_description, parent_dashboard_name, content_json, cycle_date } = snap.rows[0];
   const role = await getUserRole(userId);
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));
   if (!canView) return res.status(403).json({ error: "No access" });
 
   const date = typeof cycle_date === "string" ? cycle_date.slice(0, 10) : dayjs(cycle_date).format("YYYY-MM-DD");
-  const eml = buildEml({ dashboardName: dashboard_name, date, content: content_json });
+  const eml = buildEml({ dashboardName: dashboard_name, dashboardDescription: dashboard_description, parentDashboardName: parent_dashboard_name, date, content: content_json });
   const filename = `PRISM_${dashboard_name.replace(/\s+/g, "_")}_${dayjs(date).format("YYYYMMDD")}.eml`;
 
   res.setHeader("Content-Type", "message/rfc822");
@@ -86,8 +88,15 @@ router.get("/email/:dashboardId", async (req, res) => {
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboardId)) || (await isDashboardOwner(userId, dashboardId));
   if (!canView) return res.status(403).json({ error: "No access" });
 
-  const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [dashboardId]);
+  const dash = await query(
+    `SELECT d.name, d.description, pd.name AS parent_dashboard_name
+     FROM dashboards d LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
+     WHERE d.id = $1`,
+    [dashboardId]
+  );
   const dashboardName = dash.rows[0]?.name || "Dashboard";
+  const dashboardDescription = dash.rows[0]?.description;
+  const parentDashboardName = dash.rows[0]?.parent_dashboard_name;
 
   const { rows } = await query(
     `SELECT content_json, cycle_date FROM publishing_snapshots
@@ -101,7 +110,7 @@ router.get("/email/:dashboardId", async (req, res) => {
   const date = rawDate
     ? (typeof rawDate === "string" ? rawDate.slice(0, 10) : dayjs(rawDate).format("YYYY-MM-DD"))
     : dayjs().format("YYYY-MM-DD");
-  const eml = buildEml({ dashboardName, date, content });
+  const eml = buildEml({ dashboardName, dashboardDescription, parentDashboardName, date, content });
 
   const filename = `PRISM_${dashboardName.replace(/\s+/g, "_")}_${dayjs(date).format("YYYYMMDD")}.eml`;
   if (preview === "1" || preview === "true") {

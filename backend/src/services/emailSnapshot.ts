@@ -16,7 +16,6 @@ type SnapshotContent = {
   closedDecisions?: any[];
 };
 
-const ACCENT = "#1d63ed";
 const BORDER = "#e6e9ef";
 const MUTED = "#6b7280";
 const BG = "#f7f8fa";
@@ -160,8 +159,9 @@ function decisionTableHead() {
 // ── Category label row spanning all columns ───────────────────────────────────
 
 function catRow(name: string, colspan: number) {
-  return `<tr><td colspan="${colspan}" style="padding:14px 0 4px;">
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${MUTED};">${name}</div>
+  return `<tr><td colspan="${colspan}" style="padding:0;">
+    <div style="background:#eff6ff;border-left:3px solid #1d63ed;padding:6px 10px;margin:10px 0 2px;border-radius:3px;
+                font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#1d63ed;">${name}</div>
   </td></tr>`;
 }
 
@@ -301,8 +301,8 @@ function closedSection(closedTasks: any[], closedRisks: any[], closedDecisions: 
   return card(inner);
 }
 
-export function buildEml(params: { dashboardName: string; date: string; content: SnapshotContent }) {
-  const { dashboardName, date, content } = params;
+export function buildEml(params: { dashboardName: string; dashboardDescription?: string; parentDashboardName?: string; date: string; content: SnapshotContent }) {
+  const { dashboardName, dashboardDescription, parentDashboardName, date, content } = params;
   const subject = `[PRISM] ${dashboardName} - Snapshot - ${date}`;
 
   const openTasks = content.openTasks ?? content.tasks ?? [];
@@ -319,9 +319,11 @@ export function buildEml(params: { dashboardName: string; date: string; content:
   <div style="max-width:760px;margin:0 auto;">
 
     <!-- Header card -->
-    <div style="background:${CARD_BG};border:1px solid ${BORDER};border-left:3px solid ${ACCENT};border-radius:8px;padding:20px 24px;margin-bottom:16px;">
-      <h2 style="color:${ACCENT};margin:0 0 4px;font-size:20px;">${dashboardName}</h2>
-      <div style="font-size:13px;color:${MUTED};">Snapshot &nbsp;·&nbsp; ${fmt(date)}</div>
+    <div style="background:#0f172a;background:linear-gradient(90deg,#0f172a,#1d63ed);border-radius:8px;padding:18px 20px;margin-bottom:16px;">
+      ${parentDashboardName ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">↑ Reports to: ${parentDashboardName}</div>` : ""}
+      <h2 style="color:#ffffff;margin:0;font-size:20px;font-weight:700;">${dashboardName}</h2>
+      ${dashboardDescription ? `<div style="font-size:12px;color:#dbeafe;margin-top:6px;">${dashboardDescription}</div>` : ""}
+      <div style="font-size:11px;color:#94a3b8;margin-top:8px;">Snapshot &nbsp;·&nbsp; ${fmt(date)}</div>
     </div>
 
     <!-- Summary -->
