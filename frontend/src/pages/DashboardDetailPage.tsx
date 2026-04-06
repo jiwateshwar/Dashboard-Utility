@@ -415,33 +415,44 @@ export default function DashboardDetailPage() {
   const hasInherited = inheritedTasks.length > 0 || inheritedRisks.length > 0 || inheritedDecisions.length > 0;
 
   // Computed fortnight views (all tasks, own + inherited)
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const in14 = new Date(today); in14.setDate(today.getDate() + 14);
-  const ago14 = new Date(today); ago14.setDate(today.getDate() - 14);
+  // Use local date strings throughout to avoid UTC-vs-local timezone mismatches.
+  function localDateStr(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  const _now = new Date();
+  const todayStr = localDateStr(_now);
+  const _in14 = new Date(_now); _in14.setDate(_now.getDate() + 14);
+  const in14Str = localDateStr(_in14);
+  const _ago14 = new Date(_now); _ago14.setDate(_now.getDate() - 14);
+  const ago14Str = localDateStr(_ago14);
 
   const openStatuses = ["Open", "In Progress"];
   const plannedFortnight = tasks
     .filter((t) => {
       if (!t.target_date || !openStatuses.includes(t.status)) return false;
-      const due = new Date(t.target_date.slice(0, 10));
-      return due >= today && due <= in14;
+      const due = t.target_date.slice(0, 10);
+      return due >= todayStr && due <= in14Str;
     })
     .sort((a, b) => a.target_date.localeCompare(b.target_date));
 
   const closedFortnight = tasks
     .filter((t) => {
       if (t.status !== "Closed Accepted") return false;
-      if (!t.closure_approved_at) return false;
-      const closed = new Date(t.closure_approved_at);
-      return closed >= ago14;
+      const closedAt = t.closure_approved_at ?? t.updated_at;
+      if (!closedAt) return false;
+      return closedAt.slice(0, 10) >= ago14Str;
     })
-    .sort((a, b) => b.closure_approved_at.localeCompare(a.closure_approved_at));
+    .sort((a, b) => {
+      const aDate = (a.closure_approved_at ?? a.updated_at ?? "");
+      const bDate = (b.closure_approved_at ?? b.updated_at ?? "");
+      return bDate.localeCompare(aDate);
+    });
 
   // Due this fortnight count for KPI (includes tasks due today up to +14d)
   const dueFortnight = tasks.filter((t) => {
     if (!t.target_date || !openStatuses.includes(t.status)) return false;
-    const due = new Date(t.target_date.slice(0, 10));
-    return due >= today && due <= in14;
+    const due = t.target_date.slice(0, 10);
+    return due >= todayStr && due <= in14Str;
   }).length;
 
   // Source badge (for inherited items)

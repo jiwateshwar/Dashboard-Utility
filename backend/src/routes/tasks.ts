@@ -1,5 +1,4 @@
 import { Router } from "express";
-import dayjs from "dayjs";
 import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
@@ -211,6 +210,10 @@ router.patch("/:id", async (req, res) => {
          publish_flag = COALESCE($6, publish_flag),
          status = COALESCE($7, status),
          category_id = COALESCE($8, category_id),
+         closure_approved_at = CASE
+           WHEN $7 = 'Closed Accepted' AND closure_approved_at IS NULL THEN now()
+           ELSE closure_approved_at
+         END,
          updated_at = now()
      WHERE id = $1`,
     [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null]
