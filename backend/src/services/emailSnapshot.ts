@@ -169,26 +169,21 @@ function catRow(name: string, colspan: number) {
 
 function summaryCard(content: SnapshotContent) {
   const { tasks, risks, decisions } = content.summary;
+  const kpi = (label: string, value: number, sub: string) => `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:${MUTED};margin-bottom:4px;">${label}</div>
+    <div style="font-size:22px;font-weight:700;color:${TEXT};">${value}</div>
+    <div style="font-size:12px;color:${MUTED};">${sub}</div>`;
+  const divider = `<td style="width:1px;padding:0 20px;"><div style="width:1px;height:100%;background:${BORDER};min-height:48px;"></div></td>`;
   return card(`
-    <div style="display:flex;gap:24px;flex-wrap:wrap;">
-      <div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:${MUTED};margin-bottom:4px;">Tasks</div>
-        <div style="font-size:22px;font-weight:700;color:${TEXT};">${tasks.total}</div>
-        <div style="font-size:12px;color:${MUTED};">${tasks.open} Open &nbsp;·&nbsp; ${tasks.inProgress} In Progress</div>
-      </div>
-      <div style="width:1px;background:${BORDER};"></div>
-      <div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:${MUTED};margin-bottom:4px;">Risks</div>
-        <div style="font-size:22px;font-weight:700;color:${TEXT};">${risks.total}</div>
-        <div style="font-size:12px;color:${MUTED};">${risks.red} Critical / High</div>
-      </div>
-      <div style="width:1px;background:${BORDER};"></div>
-      <div>
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:${MUTED};margin-bottom:4px;">Decisions</div>
-        <div style="font-size:22px;font-weight:700;color:${TEXT};">${decisions.total}</div>
-        <div style="font-size:12px;color:${MUTED};">${decisions.pending} Pending</div>
-      </div>
-    </div>
+    <table style="width:100%;border-collapse:collapse;">
+      <tr>
+        <td style="vertical-align:top;padding:0;">${kpi("Tasks", tasks.total, `${tasks.open} Open &nbsp;·&nbsp; ${tasks.inProgress} In Progress`)}</td>
+        ${divider}
+        <td style="vertical-align:top;padding:0;">${kpi("Risks", risks.total, `${risks.red} Critical / High`)}</td>
+        ${divider}
+        <td style="vertical-align:top;padding:0;">${kpi("Decisions", decisions.total, `${decisions.pending} Pending`)}</td>
+      </tr>
+    </table>
     <div style="font-size:11px;color:${MUTED};margin-top:12px;">Snapshot generated ${dayjs(content.summary.generatedAt).format("DD MMM YYYY HH:mm")}</div>
   `);
 }
@@ -243,6 +238,78 @@ function decisionsSection(decisions: any[]) {
   </table>`;
 
   return card(sectionHeader("Decisions Needed", open.length) + table);
+}
+
+function plannedFortnightSection(openTasks: any[]) {
+  const today = dayjs().format("YYYY-MM-DD");
+  const in14 = dayjs().add(14, "day").format("YYYY-MM-DD");
+  const items = openTasks
+    .filter((t) => {
+      if (!t.target_date || (t.status !== "Open" && t.status !== "In Progress")) return false;
+      const due = t.target_date.slice(0, 10);
+      return due >= today && due <= in14;
+    })
+    .sort((a: any, b: any) => a.target_date.localeCompare(b.target_date));
+
+  if (items.length === 0) {
+    return card(`${sectionHeader("Planned for Coming Fortnight", 0)}<div style="font-size:13px;color:${MUTED};padding:8px 0;">No open tasks due in the next 14 days.</div>`);
+  }
+
+  const table = `<table style="width:100%;border-collapse:collapse;">
+    <thead>${taskTableHead()}</thead>
+    <tbody>${items.map((t: any, i: number) => taskRow(t, i)).join("")}</tbody>
+  </table>`;
+  return card(sectionHeader("Planned for Coming Fortnight", items.length) + table);
+}
+
+function recentlyClosedSection(closedTasks: any[]) {
+  const ago14 = dayjs().subtract(14, "day").format("YYYY-MM-DD");
+  const items = closedTasks
+    .filter((t) => {
+      const closedAt = t.closure_approved_at ?? t.updated_at;
+      if (!closedAt) return false;
+      return closedAt.slice(0, 10) >= ago14;
+    })
+    .sort((a: any, b: any) => {
+      const ad = (a.closure_approved_at ?? a.updated_at ?? "");
+      const bd = (b.closure_approved_at ?? b.updated_at ?? "");
+      return bd.localeCompare(ad);
+    });
+
+  if (items.length === 0) {
+    return card(`${sectionHeader("Closed in Last 14 Days", 0)}<div style="font-size:13px;color:${MUTED};padding:8px 0;">No tasks closed in the last 14 days.</div>`);
+  }
+
+  let rowIdx = 0;
+  const rows = items.map((t: any) => {
+    const bg = rowIdx++ % 2 === 1 ? ROW_ALT : CARD_BG;
+    const desc = t.title
+      ? `<div style="font-weight:700;font-size:13px;color:${TEXT};margin-bottom:2px;">${t.title}</div>
+         <div style="font-size:13px;color:${TEXT};">${t.item_details ?? "—"}</div>`
+      : `<div style="font-size:14px;font-weight:500;color:${TEXT};">${t.item_details ?? "—"}</div>`;
+    const closedAt = t.closure_approved_at ?? t.updated_at;
+    return `<tr>
+      <td style="background:${bg};padding:10px 8px 10px 0;vertical-align:top;">${desc}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.account_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.owner_name ?? "—"}</td>
+      <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">${closedAt ? fmt(closedAt) : "—"}</td>
+      <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge("Closed Accepted")}</td>
+    </tr>`;
+  }).join("");
+
+  const thead = `<tr>
+    <th style="text-align:left;font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px 0;letter-spacing:0.04em;border-bottom:1px solid ${BORDER};">Description</th>
+    <th style="text-align:left;font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px;letter-spacing:0.04em;border-bottom:1px solid ${BORDER};">Account</th>
+    <th style="text-align:left;font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px;letter-spacing:0.04em;border-bottom:1px solid ${BORDER};">Owner</th>
+    <th style="text-align:left;font-size:11px;font-weight:600;color:${MUTED};padding:0 8px 8px;letter-spacing:0.04em;border-bottom:1px solid ${BORDER};">Closed</th>
+    <th style="text-align:right;font-size:11px;font-weight:600;color:${MUTED};padding:0 0 8px 8px;letter-spacing:0.04em;border-bottom:1px solid ${BORDER};">Status</th>
+  </tr>`;
+
+  const table = `<table style="width:100%;border-collapse:collapse;">
+    <thead>${thead}</thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+  return card(sectionHeader("Closed in Last 14 Days", items.length) + table);
 }
 
 function closedSection(closedTasks: any[], closedRisks: any[], closedDecisions: any[]) {
@@ -338,7 +405,13 @@ export function buildEml(params: { dashboardName: string; dashboardDescription?:
     <!-- Decisions -->
     ${decisionsSection(decisions)}
 
-    <!-- Closed items -->
+    <!-- Planned for Coming Fortnight -->
+    ${plannedFortnightSection(openTasks)}
+
+    <!-- Closed in Last 14 Days -->
+    ${recentlyClosedSection(closedTasks)}
+
+    <!-- Closed items (45 days) -->
     ${closedSection(closedTasks, closedRisks, closedDecisions)}
 
     <div style="font-size:11px;color:${MUTED};text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid ${BORDER};">
