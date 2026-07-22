@@ -14,7 +14,7 @@ function daysUntil(d?: string) {
 
 const STATUS_CLASS: Record<string, string> = {
   "Open": "amber", "In Progress": "green",
-  "Closed Pending Approval": "amber", "Closed Accepted": "green",
+  "Closed Pending Approval": "amber", "Closed Accepted": "green", "Dropped": "grey",
   "Critical": "red", "High": "red", "Medium": "amber", "Low": "green",
   "Pending": "amber", "Approved": "green", "Rejected": "red", "Deferred": "amber",
   "Mitigated": "green", "Closed": "green"
@@ -25,7 +25,6 @@ export default function SnapshotsPage() {
   const [selectedDashboard, setSelectedDashboard] = useState("");
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<any | null>(null);
-  const [publishedOnly, setPublishedOnly] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +56,7 @@ export default function SnapshotsPage() {
     try {
       await api("/snapshots/generate", {
         method: "POST",
-        body: JSON.stringify({ dashboard_id: selectedDashboard, published_only: publishedOnly })
+        body: JSON.stringify({ dashboard_id: selectedDashboard })
       });
       await loadSnapshots();
     } catch (err: any) {
@@ -104,16 +103,6 @@ export default function SnapshotsPage() {
             <option value="">Select dashboard…</option>
             {dashboards.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={publishedOnly}
-              onChange={(e) => setPublishedOnly(e.target.checked)}
-            />
-            Published items only (items with "Publish" flag set)
-          </label>
         </div>
         <div className="inline-actions">
           <button className="button" onClick={generateSnapshot} disabled={!selectedDashboard || generating}>
@@ -162,12 +151,6 @@ export default function SnapshotsPage() {
                         <td>{s.content_json?.summary?.risks?.total ?? 0}</td>
                         <td>{s.content_json?.summary?.decisions?.total ?? 0}</td>
                         <td>
-                          {s.published_only
-                            ? <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>published</span>
-                            : <span style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>all</span>
-                          }
-                        </td>
-                        <td>
                           {expired
                             ? <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 4, background: "rgba(107,114,128,0.12)", color: "#6b7280", fontWeight: 600 }}>Expired</span>
                             : expiringSoon
@@ -213,7 +196,6 @@ export default function SnapshotsPage() {
               <>
                 <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
                   {fmt(snap.cycle_date)}
-                  {snap.published_only && <> &nbsp;·&nbsp; <em>Published items only</em></>}
                   {snap.is_expired && <> &nbsp;·&nbsp; <span style={{ color: "#9ca3af" }}>Expired</span></>}
                 </div>
 

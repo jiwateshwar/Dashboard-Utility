@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 import { ComboBox } from "../components/ComboBox";
+import { HashtagInput } from "../components/HashtagInput";
+import { FocusWeekSelect } from "../components/FocusWeekSelect";
+import { TaskFilterBar } from "../components/TaskFilterBar";
+import { HashtagChips } from "../components/HashtagChips";
+import { formatWeekLabel } from "../lib/weeks";
 
 type Mode = "view" | "edit";
 
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
-const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", "Closed Pending Approval": "amber", "Closed Accepted": "green" };
+const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", "Closed Pending Approval": "amber", "Closed Accepted": "green", Dropped: "grey" };
 
 function fmt(dateStr?: string) {
   if (!dateStr) return "—";
@@ -22,17 +27,9 @@ function daysPastDue(targetDate?: string): number {
   return Math.floor((today.getTime() - due.getTime()) / 86400000);
 }
 
-/** Days until target_date (positive = future). */
-function daysUntilDue(targetDate?: string): number {
-  if (!targetDate) return 999;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due = new Date(targetDate.slice(0, 10));
-  return Math.floor((due.getTime() - today.getTime()) / 86400000);
-}
-
 /** Coloured chip showing overdue severity. Returns null if on track. */
 function AgingChip({ targetDate, status }: { targetDate?: string; status?: string }) {
-  const closed = ["Closed Accepted", "Closed Pending Approval"];
+  const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
   if (!targetDate || (status && closed.includes(status))) return null;
   const days = daysPastDue(targetDate);
   if (days <= 0) return null;
@@ -44,24 +41,6 @@ function AgingChip({ targetDate, status }: { targetDate?: string; status?: strin
   return (
     <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600, background: bg, color, whiteSpace: "nowrap" }}>
       +{days}d overdue
-    </span>
-  );
-}
-
-/** Green chip for upcoming tasks */
-function DueChip({ targetDate }: { targetDate?: string }) {
-  if (!targetDate) return null;
-  const days = daysUntilDue(targetDate);
-  if (days < 0) return null;
-  const [bg, color] =
-    days === 0 ? ["rgba(245,166,35,0.15)", "#f5a623"] :
-    days <= 3  ? ["rgba(245,166,35,0.10)", "#f5a623"] :
-    days <= 7  ? ["rgba(46,189,133,0.12)", "#2ebd85"] :
-                 ["rgba(46,189,133,0.10)", "#2ebd85"];
-  const label = days === 0 ? "Due today" : `Due in ${days}d`;
-  return (
-    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, fontWeight: 600, background: bg, color, whiteSpace: "nowrap" }}>
-      {label}
     </span>
   );
 }
@@ -80,7 +59,8 @@ function DeadlineChip({ deadline, label }: { deadline?: string; label?: string }
 
 const EMPTY_TASK = {
   category_id: "", account_id: "", title: "", item_details: "", owner_ids: [] as string[],
-  target_date: "", sla_days: "", status: "Open", publish_flag: false
+  target_date: "", sla_days: "", status: "Open", publish_flag: false,
+  tags: [] as string[], focus_week_start: ""
 };
 const EMPTY_RISK = {
   account_id: "", risk_title: "", risk_description: "", risk_owner: "",
@@ -98,6 +78,7 @@ export default function DashboardDetailPage() {
   const [dashboard, setDashboard] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [displayedTasks, setDisplayedTasks] = useState<any[]>([]);
   const [risks, setRisks] = useState<any[]>([]);
   const [decisions, setDecisions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -106,6 +87,9 @@ export default function DashboardDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
+  const [me, setMe] = useState<any>(null);
+
+  useEffect(() => { api(`/auth/me`).then(setMe).catch(() => setMe(null)); }, []);
 
   // Create form state
   const [showCreateTask, setShowCreateTask] = useState(false);
@@ -168,6 +152,14 @@ export default function DashboardDetailPage() {
     if (Array.isArray(t.owner_names) && t.owner_names.length > 0) return t.owner_names.join(", ");
     if (Array.isArray(t.owner_ids) && t.owner_ids.length > 0) return t.owner_ids.map((id: string) => ownerName(id)).join(", ");
     return ownerName(t.owner_id);
+  };
+  // Only the task's creator/owner(s), a dashboard owner, or an admin may set its focus week (mirrors the server-side check).
+  const canSetFocusWeek = (t: any): boolean => {
+    if (!me) return false;
+    if (me.role === "Admin" || me.role === "SuperAdmin") return true;
+    if (dashboard?.is_owner || dashboard?.primary_owner_id === me.id || dashboard?.secondary_owner_id === me.id) return true;
+    if (t.created_by === me.id) return true;
+    return Array.isArray(t.owner_ids) ? t.owner_ids.includes(me.id) : t.owner_id === me.id;
   };
 
   const accountComboOptions = useMemo(() => accountOptions.map((a) => ({ id: a.id, label: a.account_name })), [accountOptions]);
@@ -368,7 +360,9 @@ export default function DashboardDetailPage() {
       target_date: t.target_date?.slice(0, 10) || "",
       sla_days: t.sla_days ?? "",
       status: t.status,
-      publish_flag: t.publish_flag
+      publish_flag: t.publish_flag,
+      tags: Array.isArray(t.tags) ? t.tags : [],
+      focus_week_start: t.focus_week_start?.slice(0, 10) || ""
     });
   }
 
@@ -423,30 +417,8 @@ export default function DashboardDetailPage() {
   const todayStr = localDateStr(_now);
   const _in14 = new Date(_now); _in14.setDate(_now.getDate() + 14);
   const in14Str = localDateStr(_in14);
-  const _ago14 = new Date(_now); _ago14.setDate(_now.getDate() - 14);
-  const ago14Str = localDateStr(_ago14);
 
   const openStatuses = ["Open", "In Progress"];
-  const plannedFortnight = tasks
-    .filter((t) => {
-      if (!t.target_date || !openStatuses.includes(t.status)) return false;
-      const due = t.target_date.slice(0, 10);
-      return due >= todayStr && due <= in14Str;
-    })
-    .sort((a, b) => a.target_date.localeCompare(b.target_date));
-
-  const closedFortnight = tasks
-    .filter((t) => {
-      if (t.status !== "Closed Accepted") return false;
-      const closedAt = t.closure_approved_at ?? t.updated_at;
-      if (!closedAt) return false;
-      return closedAt.slice(0, 10) >= ago14Str;
-    })
-    .sort((a, b) => {
-      const aDate = (a.closure_approved_at ?? a.updated_at ?? "");
-      const bDate = (b.closure_approved_at ?? b.updated_at ?? "");
-      return bDate.localeCompare(aDate);
-    });
 
   // Due this fortnight count for KPI (includes tasks due today up to +14d)
   const dueFortnight = tasks.filter((t) => {
@@ -527,162 +499,50 @@ export default function DashboardDetailPage() {
       {/* ── VIEW MODE ── */}
       {mode === "view" && (
         <>
-          {/* Per-category task cards */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-            {categoryOptions.map((cat) => {
-              const catTasks = tasks.filter((t) => t.category_id === cat.id);
-              return (
-                <div key={cat.id} className="card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: catTasks.length > 0 ? 10 : 0 }}>
-                    <h3 style={{ margin: 0 }}>{cat.name}</h3>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                      {catTasks.length} {catTasks.length === 1 ? "item" : "items"}
-                    </span>
-                  </div>
-                  {catTasks.length === 0 ? (
-                    <div style={{ color: "var(--muted)", fontSize: 13 }}>No items</div>
-                  ) : (
-                    catTasks.map((t) => (
-                      <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
-                        <div style={{ minWidth: 0 }}>
-                          {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                          <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                            {ownerNames(t)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
-                            {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                          <AgingChip targetDate={t.target_date} status={t.status} />
-                          <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Other Tasks: own tasks whose category is not in any active category card */}
-            {(() => {
-              const activeCatIds = new Set(categoryOptions.map((c) => c.id));
-              const uncategorised = ownTasks.filter(
-                (t) => !activeCatIds.has(t.category_id) && t.status !== "Closed Accepted"
-              );
-              if (uncategorised.length === 0) return null;
-              return (
-                <div className="card">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                    <h3 style={{ margin: 0 }}>Other Tasks</h3>
-                    <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                      {uncategorised.length} {uncategorised.length === 1 ? "item" : "items"}
-                    </span>
-                  </div>
-                  {uncategorised.map((t) => (
-                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
-                      <div style={{ minWidth: 0 }}>
-                        {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                        <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                          {ownerNames(t)}{t.target_date ? ` · Due ${fmt(t.target_date)}` : ""}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                        <AgingChip targetDate={t.target_date} status={t.status} />
-                        <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                      </div>
-                    </div>
+          {/* Tasks — filterable/sortable table (own + inherited-published, matching the source rows already returned by GET /tasks) */}
+          <TaskFilterBar tasks={tasks} users={users} accounts={accounts} onFilteredChange={setDisplayedTasks} />
+          <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h3 style={{ margin: 0 }}>Tasks</h3>
+              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
+                {displayedTasks.length} {displayedTasks.length === 1 ? "item" : "items"}
+              </span>
+            </div>
+            {displayedTasks.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks match the current filters</div>
+            ) : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Category</th><th>Task</th><th>Account</th><th>Owner(s)</th><th>Created By</th>
+                    <th>Due</th><th>Focus Week</th><th>Hashtags</th><th>Status</th>
+                    {hasInherited && <th>Source</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedTasks.map((t) => (
+                    <tr key={t.id}>
+                      <td>{catName(t.category_id)}</td>
+                      <td>
+                        {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
+                        <div>{t.item_details}</div>
+                      </td>
+                      <td>{acctName(t.account_id)}</td>
+                      <td>{ownerNames(t)}</td>
+                      <td>{ownerName(t.created_by)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {fmt(t.target_date)} <AgingChip targetDate={t.target_date} status={t.status} />
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
+                      <td><HashtagChips tags={t.tags} /></td>
+                      <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
+                      {hasInherited && <td>{t.source_dashboard_id !== id ? <SourceBadge name={t.source_dashboard_name} /> : null}</td>}
+                    </tr>
                   ))}
-                </div>
-              );
-            })()}
-
-            {/* Virtual: Planned for coming fortnight */}
-            <div className="card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: plannedFortnight.length > 0 ? 10 : 0 }}>
-                <h3 style={{ margin: 0 }}>Planned for Coming Fortnight</h3>
-                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                  {plannedFortnight.length} {plannedFortnight.length === 1 ? "item" : "items"}
-                </span>
-              </div>
-              {plannedFortnight.length === 0 ? (
-                <div style={{ color: "var(--muted)", fontSize: 13 }}>No open tasks due in the next 14 days</div>
-              ) : (
-                plannedFortnight.map((t) => (
-                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                      <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        {catName(t.category_id)} · {ownerNames(t)}
-                        {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                      <DueChip targetDate={t.target_date} />
-                      <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Virtual: Closed in last fortnight */}
-            <div className="card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: closedFortnight.length > 0 ? 10 : 0 }}>
-                <h3 style={{ margin: 0 }}>Closed in Last Fortnight</h3>
-                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                  {closedFortnight.length} {closedFortnight.length === 1 ? "item" : "items"}
-                </span>
-              </div>
-              {closedFortnight.length === 0 ? (
-                <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks closed in the last 14 days</div>
-              ) : (
-                closedFortnight.map((t) => (
-                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                      <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        {catName(t.category_id)} · {ownerNames(t)} · Closed {fmt(t.closure_approved_at)}
-                        {t.source_dashboard_id !== id && <> · <span style={{ color: "#6366f1" }}>{t.source_dashboard_name}</span></>}
-                      </div>
-                    </div>
-                    <span className="tag green">Closed Accepted</span>
-                  </div>
-                ))
-              )}
-            </div>
+                </tbody>
+              </table>
+            )}
           </div>
-
-          {/* Items from child dashboards — Overview (read-only) */}
-          {inheritedTasks.length > 0 && (
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <h3 style={{ margin: 0 }}>Items from Child Dashboards</h3>
-                <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                  {inheritedTasks.length} {inheritedTasks.length === 1 ? "item" : "items"}
-                </span>
-              </div>
-              {inheritedTasks.map((t) => (
-                <div key={t.id} style={{ borderTop: "1px solid var(--border)", padding: "9px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                    <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500 }}>{t.item_details}</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                      {catName(t.category_id)} · {acctName(t.account_id)} · {ownerNames(t)}
-                      {t.target_date && <> · Due {fmt(t.target_date)}</>}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                    <AgingChip targetDate={t.target_date} status={t.status} />
-                    <SourceBadge name={t.source_dashboard_name} />
-                    <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Decisions — read-only */}
           <div className="card" style={{ marginBottom: 16 }}>
@@ -805,6 +665,7 @@ export default function DashboardDetailPage() {
                 <div className="form-row">
                   <input className="input" type="date" value={newTask.target_date} onChange={(e) => setNewTask({ ...newTask, target_date: e.target.value })} />
                   <input className="input" placeholder="SLA days" value={newTask.sla_days} onChange={(e) => setNewTask({ ...newTask, sla_days: e.target.value })} />
+                  <FocusWeekSelect value={newTask.focus_week_start} onChange={(v) => setNewTask({ ...newTask, focus_week_start: v })} />
                 </div>
                 <input className="input" placeholder="Title *" value={newTask.title}
                   onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
@@ -812,6 +673,9 @@ export default function DashboardDetailPage() {
                 <textarea className="input" rows={2} placeholder="Task details *" value={newTask.item_details}
                   onChange={(e) => setNewTask({ ...newTask, item_details: e.target.value })}
                   style={{ resize: "vertical", marginBottom: 10 }} />
+                <div style={{ marginBottom: 10 }}>
+                  <HashtagInput tags={newTask.tags} onChange={(tags) => setNewTask({ ...newTask, tags })} />
+                </div>
                 <div className="inline-actions">
                   <label style={{ fontSize: 13, cursor: "pointer" }}>
                     <input type="checkbox" checked={newTask.publish_flag} onChange={(e) => setNewTask({ ...newTask, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
@@ -867,7 +731,15 @@ export default function DashboardDetailPage() {
                               <option value="In Progress">In Progress</option>
                               <option value="Closed Pending Approval">Closed Pending Approval</option>
                               <option value="Closed Accepted">Closed Accepted</option>
+                              <option value="Dropped">Dropped</option>
                             </select>
+                          </div>
+                          <div className="form-row">
+                            <FocusWeekSelect
+                              value={taskEditForm.focus_week_start ?? ""}
+                              onChange={(v) => setTaskEditForm({ ...taskEditForm, focus_week_start: v })}
+                              disabled={!canSetFocusWeek(t)}
+                            />
                           </div>
                           <input className="input" placeholder="Title" value={taskEditForm.title ?? ""}
                             onChange={(e) => setTaskEditForm({ ...taskEditForm, title: e.target.value })}
@@ -875,6 +747,9 @@ export default function DashboardDetailPage() {
                           <textarea className="input" rows={3} value={taskEditForm.item_details}
                             onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
                             style={{ resize: "vertical", marginBottom: 10 }} />
+                          <div style={{ marginBottom: 10 }}>
+                            <HashtagInput tags={taskEditForm.tags ?? []} onChange={(tags) => setTaskEditForm({ ...taskEditForm, tags })} />
+                          </div>
                           <div className="inline-actions">
                             <label style={{ fontSize: 13, cursor: "pointer" }}>
                               <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />

@@ -14,7 +14,22 @@ router.get("/", async (req, res) => {
   }
 
   const [tasks, risks, decisions, escalations, pendingApprovals] = await Promise.all([
-    query(`SELECT * FROM tasks WHERE is_archived = false AND owner_id = ANY($1)`, [subordinates]),
+    query(
+      `SELECT t.*,
+              COALESCE(
+                (SELECT array_agg(tow.user_id ORDER BY tow.user_id)
+                 FROM task_owners tow WHERE tow.task_id = t.id),
+                ARRAY[t.owner_id]
+              ) as owner_ids,
+              COALESCE(
+                (SELECT array_agg(tg.tag ORDER BY tg.tag)
+                 FROM task_tags tg WHERE tg.task_id = t.id),
+                ARRAY[]::text[]
+              ) as tags
+       FROM tasks t
+       WHERE t.is_archived = false AND t.owner_id = ANY($1)`,
+      [subordinates]
+    ),
     query(`SELECT * FROM risks WHERE is_archived = false AND risk_owner = ANY($1)`, [subordinates]),
     query(`SELECT * FROM decisions WHERE is_archived = false AND decision_owner = ANY($1)`, [subordinates]),
     query(

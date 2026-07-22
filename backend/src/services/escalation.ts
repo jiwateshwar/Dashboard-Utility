@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import { v4 as uuid } from "uuid";
 import { query } from "../db.js";
+import { CLOSED_TASK_STATUSES } from "../constants.js";
 
 async function notify(userId: string, dashboardId: string, entityType: string, entityId: string, ruleName: string, message: string) {
   const id = uuid();
@@ -40,8 +41,8 @@ async function runDefaultRules(
   const tasks = await query(
     `SELECT t.id, t.owner_id, t.created_at
      FROM tasks t
-     WHERE t.dashboard_id = $1 AND t.is_archived = false AND t.status != 'Closed Accepted'`,
-    [dash.id]
+     WHERE t.dashboard_id = $1 AND t.is_archived = false AND NOT (t.status::text = ANY($2))`,
+    [dash.id, CLOSED_TASK_STATUSES]
   );
   for (const task of tasks.rows) {
     const ageDays = dayjs().diff(dayjs(task.created_at), "day");
@@ -87,8 +88,8 @@ async function runRule(
     const tasks = await query(
       `SELECT t.id, t.owner_id, t.created_at
        FROM tasks t
-       WHERE t.dashboard_id = $1 AND t.is_archived = false AND t.status != 'Closed Accepted'`,
-      [dash.id]
+       WHERE t.dashboard_id = $1 AND t.is_archived = false AND NOT (t.status::text = ANY($2))`,
+      [dash.id, CLOSED_TASK_STATUSES]
     );
     for (const task of tasks.rows) {
       const ageDays = dayjs().diff(dayjs(task.created_at), "day");

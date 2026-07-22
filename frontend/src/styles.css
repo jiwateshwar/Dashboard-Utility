@@ -301,6 +301,7 @@ a {
 .tag.red { background: #fdecec; color: var(--danger); }
 .tag.amber { background: #fff6e5; color: var(--warn); }
 .tag.green { background: #e6f6ef; color: var(--ok); }
+.tag.grey { background: #eef0f3; color: #6b7280; }
 
 .table {
   width: 100%;

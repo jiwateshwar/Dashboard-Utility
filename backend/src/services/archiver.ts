@@ -1,12 +1,14 @@
 import { query } from "../db.js";
+import { CLOSED_TASK_STATUSES } from "../constants.js";
 
 export async function runArchival() {
   await query(
     `UPDATE tasks
      SET is_archived = true
-     WHERE status = 'Closed Accepted'
+     WHERE status::text = ANY($1)
        AND closure_approved_at IS NOT NULL
-       AND closure_approved_at < now() - interval '45 days'`
+       AND closure_approved_at < now() - interval '45 days'`,
+    [CLOSED_TASK_STATUSES]
   );
 
   await query(

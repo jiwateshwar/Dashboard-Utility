@@ -1,13 +1,14 @@
 import dayjs from "dayjs";
 import { query } from "../db.js";
+import { CLOSED_TASK_STATUSES, isClosedTaskStatus } from "../constants.js";
 
-export async function buildSnapshotContent(dashboardId: string, publishedOnly = false) {
+export async function buildSnapshotContent(dashboardId: string) {
   // Recursive CTE: include child dashboards up to 2 levels deep.
-  // When publishedOnly=false: all non-archived items from root and children are included.
-  // When publishedOnly=true: only items with publish_flag=true (root and children alike).
-  const pf  = publishedOnly ? "AND t.publish_flag = true" : "";
-  const pfR = publishedOnly ? "AND r.publish_flag = true" : "";
-  const pfD = publishedOnly ? "AND d.publish_flag = true" : "";
+  // All non-archived items from root and children are included regardless of publish_flag.
+  // (publish_flag controls parent-dashboard propagation, not snapshot content.)
+  const pf  = "";
+  const pfR = "";
+  const pfD = "";
 
   const tasks = await query(
     `WITH RECURSIVE child_dashboards AS (
@@ -78,10 +79,10 @@ export async function buildSnapshotContent(dashboardId: string, publishedOnly = 
      JOIN users u ON u.id = t.owner_id
      LEFT JOIN categories cat ON cat.id = t.category_id
      LEFT JOIN accounts a ON a.id = t.account_id
-     WHERE t.status = 'Closed Accepted'
+     WHERE t.status::text = ANY($2)
        AND COALESCE(t.closure_approved_at, t.updated_at) >= now() - interval '45 days'
        ${pf}`,
-    [dashboardId]
+    [dashboardId, CLOSED_TASK_STATUSES]
   );
 
   const closedRisks = await query(
@@ -122,7 +123,7 @@ export async function buildSnapshotContent(dashboardId: string, publishedOnly = 
     [dashboardId]
   );
 
-  const openTaskRows = tasks.rows.filter((t) => t.status !== "Closed Accepted" && t.status !== "Closed Pending Approval");
+  const openTaskRows = tasks.rows.filter((t) => !isClosedTaskStatus(t.status) && t.status !== "Closed Pending Approval");
   const summary = {
     tasks: {
       total: openTaskRows.length,

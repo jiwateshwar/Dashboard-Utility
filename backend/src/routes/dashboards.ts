@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getUserRole, isDashboardOwner, hasDashboardAccess, isAdminRole } from "../services/permission.js";
+import { CLOSED_TASK_STATUSES } from "../constants.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -471,7 +472,7 @@ router.get("/:id/summary", async (req, res) => {
   const decisionRows = raw.filter((r) => r.kind === "decision");
   const now = dayjs();
 
-  const closedStatuses = ["Closed Accepted", "Closed Pending Approval"];
+  const closedStatuses = [...CLOSED_TASK_STATUSES, "Closed Pending Approval"];
   const taskStats = {
     open: taskRows.filter((t) => t.status === "Open").length,
     inProgress: taskRows.filter((t) => t.status === "In Progress").length,

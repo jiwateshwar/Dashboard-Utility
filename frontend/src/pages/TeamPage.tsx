@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { TaskFilterBar } from "../components/TaskFilterBar";
+import { HashtagChips } from "../components/HashtagChips";
+import { formatWeekLabel } from "../lib/weeks";
 
 type Tab = "overview" | "escalations" | "approvals";
 
@@ -8,6 +11,7 @@ const TASK_STATUS_CLASS: Record<string, string> = {
   "In Progress": "green",
   "Closed Pending Approval": "amber",
   "Closed Accepted": "green",
+  Dropped: "grey",
 };
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
@@ -25,7 +29,7 @@ function daysPastDue(targetDate?: string): number {
 }
 
 function AgingChip({ targetDate, status }: { targetDate?: string; status?: string }) {
-  const closed = ["Closed Accepted", "Closed Pending Approval"];
+  const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
   if (!targetDate || (status && closed.includes(status))) return null;
   const days = daysPastDue(targetDate);
   if (days <= 0) return null;
@@ -66,9 +70,14 @@ export default function TeamPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [showOverdue, setShowOverdue] = useState(false);
   const [showRed, setShowRed] = useState(false);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [displayedTasks, setDisplayedTasks] = useState<any[]>([]);
 
   useEffect(() => {
     api("/team").then(setData);
+    api("/accounts").then(setAccounts);
+    api("/users").then(setUsers);
   }, []);
 
   if (!data) return <div className="dashboard-shell"><div>Loading...</div></div>;
@@ -76,8 +85,10 @@ export default function TeamPage() {
   const escalations: any[] = data.escalations ?? [];
   const pendingApprovals: any[] = data.pendingApprovals ?? [];
 
+  const acctName = (aid?: string) => accounts.find((a) => a.id === aid)?.account_name ?? "—";
+
   const filteredTasks = data.tasks.filter((t: any) => {
-    const closed = ["Closed Accepted", "Closed Pending Approval"];
+    const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
     if (showRed && (!t.target_date || closed.includes(t.status) || new Date(t.target_date).getTime() >= Date.now())) return false;
     if (showOverdue && t.target_date) return new Date(t.target_date).getTime() < Date.now();
     return true;
@@ -93,7 +104,7 @@ export default function TeamPage() {
   });
 
   const overdueTasks = data.tasks.filter((t: any) => {
-    const closed = ["Closed Accepted", "Closed Pending Approval"];
+    const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
     if (!t.target_date || closed.includes(t.status)) return false;
     return daysPastDue(t.target_date) > 0;
   });
@@ -162,30 +173,37 @@ export default function TeamPage() {
           </div>
 
           {/* Tasks */}
-          <div className="card" style={{ marginBottom: 16 }}>
+          <TaskFilterBar tasks={filteredTasks} users={users} accounts={accounts} onFilteredChange={setDisplayedTasks} />
+          <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <h3 style={{ margin: 0 }}>Tasks</h3>
               <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                {filteredTasks.length} {filteredTasks.length === 1 ? "item" : "items"}
+                {displayedTasks.length} {displayedTasks.length === 1 ? "item" : "items"}
               </span>
             </div>
-            {filteredTasks.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks</div>
+            {displayedTasks.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks match the current filters</div>
             ) : (
-              filteredTasks.map((t: any) => (
-                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                      {t.target_date ? `Due ${fmt(t.target_date)}` : "No due date"}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                    <AgingChip targetDate={t.target_date} status={t.status} />
-                    <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                  </div>
-                </div>
-              ))
+              <table className="table">
+                <thead>
+                  <tr><th>Task</th><th>Account</th><th>Due</th><th>Focus Week</th><th>Hashtags</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {displayedTasks.map((t: any) => (
+                    <tr key={t.id}>
+                      <td>
+                        {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
+                        <div>{t.item_details}</div>
+                      </td>
+                      <td>{acctName(t.account_id)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{fmt(t.target_date)} <AgingChip targetDate={t.target_date} status={t.status} /></td>
+                      <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
+                      <td><HashtagChips tags={t.tags} /></td>
+                      <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
 

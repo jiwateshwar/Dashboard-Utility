@@ -13,9 +13,13 @@ interface ComboBoxProps {
   multi?: boolean;
   allowCreate?: boolean;
   onCreateOption?: (label: string) => void;
+  /** Fires on every keystroke in the search input — used to drive async suggestion fetches. */
+  onQueryChange?: (query: string) => void;
+  /** Text appended after the quoted query in the "+ Add ..." row, e.g. "as new account". */
+  createOptionLabel?: string;
 }
 
-export function ComboBox({ options, selectedIds, onChange, placeholder, multi = false, allowCreate = false, onCreateOption }: ComboBoxProps) {
+export function ComboBox({ options, selectedIds, onChange, placeholder, multi = false, allowCreate = false, onCreateOption, onQueryChange, createOptionLabel = "as new account" }: ComboBoxProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,6 +66,7 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
   function handleInputChange(val: string) {
     setQuery(val);
     setOpen(true);
+    onQueryChange?.(val);
     if (!multi && val === "") {
       onChange([]);
     }
@@ -70,7 +75,7 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
   function handleCreate() {
     if (!trimmedQuery || !onCreateOption) return;
     onCreateOption(trimmedQuery);
-    setQuery(trimmedQuery);
+    setQuery(multi ? "" : trimmedQuery);
     setOpen(false);
   }
 
@@ -146,7 +151,7 @@ export function ComboBox({ options, selectedIds, onChange, placeholder, multi = 
               onMouseLeave={(e) => (e.currentTarget.style.background = "")}
             >
               <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-              Add "{trimmedQuery}" as new account
+              Add "{trimmedQuery}" {createOptionLabel}
             </div>
           )}
         </div>

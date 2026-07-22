@@ -29,21 +29,20 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/generate", async (req, res) => {
-  const { dashboard_id, published_only } = req.body as any;
+  const { dashboard_id } = req.body as any;
   if (!dashboard_id) return res.status(400).json({ error: "dashboard_id required" });
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
   const canGenerate = isAdminRole(role) || (await isDashboardOwner(userId, dashboard_id)) || (await hasDashboardAccess(userId, dashboard_id));
   if (!canGenerate) return res.status(403).json({ error: "No access" });
 
-  const publishedOnly = published_only === true || published_only === "true";
-  const content = await buildSnapshotContent(dashboard_id, publishedOnly);
+  const content = await buildSnapshotContent(dashboard_id);
   const id = uuid();
   const today = dayjs().format("YYYY-MM-DD");
   await query(
     `INSERT INTO publishing_snapshots (id, dashboard_id, cycle_date, content_json, published_only, expires_at)
-     VALUES ($1, $2, $3, $4, $5, now() + interval '180 days')`,
-    [id, dashboard_id, today, JSON.stringify(content), publishedOnly]
+     VALUES ($1, $2, $3, $4, false, now() + interval '180 days')`,
+    [id, dashboard_id, today, JSON.stringify(content)]
   );
 
   res.json({ id });

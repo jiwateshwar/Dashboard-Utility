@@ -40,6 +40,7 @@ function statusBadge(status: string) {
     "In Progress":              { bg: "rgba(46,189,133,0.12)",  color: "#059669" },
     "Closed Pending Approval":  { bg: "rgba(245,166,35,0.12)",  color: "#d97706" },
     "Closed Accepted":          { bg: "rgba(46,189,133,0.12)",  color: "#059669" },
+    "Dropped":                  { bg: "rgba(107,114,128,0.12)", color: "#6b7280" },
     "Red":    { bg: "rgba(198,40,40,0.12)",  color: "#c62828" },
     "Amber":  { bg: "rgba(245,166,35,0.12)", color: "#d97706" },
     "Green":  { bg: "rgba(46,189,133,0.12)", color: "#059669" },
@@ -298,7 +299,7 @@ function recentlyClosedSection(closedTasks: any[]) {
       <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.account_name ?? "—"}</td>
       <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.owner_name ?? "—"}</td>
       <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">${closedAt ? fmt(closedAt) : "—"}</td>
-      <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge("Closed Accepted")}</td>
+      <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge(t.status)}</td>
     </tr>`;
   }).join("");
 
@@ -336,7 +337,7 @@ function closedSection(closedTasks: any[], closedRisks: any[], closedDecisions: 
         <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.account_name ?? "—"}</td>
         <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};">${t.owner_name ?? "—"}</td>
         <td style="background:${bg};padding:10px 8px;vertical-align:top;font-size:13px;color:${MUTED};white-space:nowrap;">Closed ${fmt(t.closure_approved_at)}</td>
-        <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge("Closed Accepted")}</td>
+        <td style="background:${bg};padding:10px 0 10px 8px;vertical-align:top;text-align:right;">${statusBadge(t.status)}</td>
       </tr>`;
     }).join("");
     inner += `<table style="width:100%;border-collapse:collapse;">${catRow("Tasks", 5)}<tbody>${rows}</tbody></table>`;

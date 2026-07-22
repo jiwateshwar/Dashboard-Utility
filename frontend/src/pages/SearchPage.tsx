@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
+
+function fmt(dateStr?: string) {
+  if (!dateStr) return "—";
+  return dateStr.slice(0, 10);
+}
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -9,10 +15,18 @@ export default function SearchPage() {
   const [aging, setAging] = useState("");
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [dashboardId, setDashboardId] = useState("");
+  const [searchParams] = useSearchParams();
+  const tagParam = searchParams.get("tag");
+  const [tagResults, setTagResults] = useState<any[] | null>(null);
 
   useEffect(() => {
     api("/dashboards").then(setDashboards).catch(() => setDashboards([]));
   }, []);
+
+  useEffect(() => {
+    if (!tagParam) { setTagResults(null); return; }
+    api(`/tasks/by-tag?tag=${encodeURIComponent(tagParam)}`).then(setTagResults).catch(() => setTagResults([]));
+  }, [tagParam]);
 
   async function runSearch() {
     if (!query) return;
@@ -43,6 +57,7 @@ export default function SearchPage() {
           <option value="In Progress">In Progress</option>
           <option value="Closed Pending Approval">Closed Pending Approval</option>
           <option value="Closed Accepted">Closed Accepted</option>
+          <option value="Dropped">Dropped</option>
           <option value="Mitigated">Mitigated</option>
           <option value="Closed">Closed</option>
           <option value="Pending">Pending</option>
@@ -59,6 +74,38 @@ export default function SearchPage() {
         <input className="input" placeholder="Aging > days" value={aging} onChange={(e) => setAging(e.target.value)} />
       </div>
       <button className="button" onClick={runSearch}>Search</button>
+
+      {tagParam && (
+        <div className="card" style={{ marginTop: 16, overflowX: "auto" }}>
+          <h3 style={{ marginTop: 0 }}>#{tagParam} — across dashboards you have access to</h3>
+          {tagResults === null ? (
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>Loading…</div>
+          ) : tagResults.length === 0 ? (
+            <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks tagged #{tagParam} that you have access to.</div>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr><th>Task</th><th>Dashboard</th><th>Owner</th><th>Due</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                {tagResults.map((t) => (
+                  <tr key={t.id}>
+                    <td>
+                      {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
+                      <div>{t.item_details}</div>
+                    </td>
+                    <td>{t.dashboard_name}</td>
+                    <td>{t.owner_name}</td>
+                    <td>{fmt(t.target_date)}</td>
+                    <td>{t.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
       {results && (
         <div className="grid two">
           <div className="card">

@@ -9,7 +9,12 @@
       "Bash(powershell -Command \"Test-NetConnection -ComputerName truenas.local -Port 31015\")",
       "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\\\VS Code\\\\Dashboard Utility\\\\Dashboard-Utility\\\\check_db.ps1\")",
       "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"c:\\\\VS Code\\\\Dashboard Utility\\\\Dashboard-Utility\\\\check_db2.ps1\")",
-      "Bash(powershell -NoProfile -Command \"Test-NetConnection -ComputerName truenas.local -Port 31015\")"
+      "Bash(powershell -NoProfile -Command \"Test-NetConnection -ComputerName truenas.local -Port 31015\")",
+      "Bash(/mingw64/bin/curl.exe --version)",
+      "Bash(cmd /c \"curl --version\")",
+      "Bash(powershell -Command \"Invoke-RestMethod -Uri ''http://truenas.local:31015/api/auth'' -Method POST -ContentType ''application/json'' -Body ''{\"\"username\"\":\"\"admin\"\",\"\"password\"\":\"\"Pineaple@9417$*\"\"}'' | ConvertTo-Json\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"c:\\\\VS Code\\\\Dashboard Utility\\\\Dashboard-Utility\\\\check_db.ps1\")",
+      "Bash(pwsh --version)"
     ]
   }
 }

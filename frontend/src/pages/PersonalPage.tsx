@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { ComboBox } from "../components/ComboBox";
+import { HashtagInput } from "../components/HashtagInput";
+import { FocusWeekSelect } from "../components/FocusWeekSelect";
+import { TaskFilterBar } from "../components/TaskFilterBar";
+import { HashtagChips } from "../components/HashtagChips";
+import { formatWeekLabel } from "../lib/weeks";
 
 type Tab = "overview" | "escalations" | "approvals" | "manage";
 
@@ -9,6 +14,7 @@ const TASK_STATUS_CLASS: Record<string, string> = {
   "In Progress": "green",
   "Closed Pending Approval": "amber",
   "Closed Accepted": "green",
+  Dropped: "grey",
 };
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
@@ -26,7 +32,7 @@ function daysPastDue(targetDate?: string): number {
 }
 
 function AgingChip({ targetDate, status }: { targetDate?: string; status?: string }) {
-  const closed = ["Closed Accepted", "Closed Pending Approval"];
+  const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
   if (!targetDate || (status && closed.includes(status))) return null;
   const days = daysPastDue(targetDate);
   if (days <= 0) return null;
@@ -70,6 +76,7 @@ export default function PersonalPage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [taskEditForm, setTaskEditForm] = useState<any>({});
   const [taskError, setTaskError] = useState<string | null>(null);
+  const [displayedTasks, setDisplayedTasks] = useState<any[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -108,6 +115,8 @@ export default function PersonalPage() {
       sla_days: t.sla_days ?? "",
       status: t.status,
       publish_flag: t.publish_flag,
+      tags: Array.isArray(t.tags) ? t.tags : [],
+      focus_week_start: t.focus_week_start?.slice(0, 10) || "",
     });
   }
 
@@ -148,9 +157,9 @@ export default function PersonalPage() {
 
   if (!data) return <div className="dashboard-shell"><div>Loading...</div></div>;
 
-  const openTasks = data.tasks.filter((t: any) => t.status !== "Closed Accepted");
+  const openTasks = data.tasks.filter((t: any) => t.status !== "Closed Accepted" && t.status !== "Dropped");
   const overdueTasks = data.tasks.filter((t: any) => {
-    const closed = ["Closed Accepted", "Closed Pending Approval"];
+    const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
     if (!t.target_date || closed.includes(t.status)) return false;
     return daysPastDue(t.target_date) > 0;
   });
@@ -213,30 +222,37 @@ export default function PersonalPage() {
       {tab === "overview" && (
         <>
           {/* My Tasks */}
-          <div className="card" style={{ marginBottom: 16 }}>
+          <TaskFilterBar tasks={data.tasks} users={users} accounts={accounts} onFilteredChange={setDisplayedTasks} />
+          <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <h3 style={{ margin: 0 }}>My Tasks</h3>
               <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                {data.tasks.length} {data.tasks.length === 1 ? "item" : "items"}
+                {displayedTasks.length} {displayedTasks.length === 1 ? "item" : "items"}
               </span>
             </div>
-            {data.tasks.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks assigned</div>
+            {displayedTasks.length === 0 ? (
+              <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks match the current filters</div>
             ) : (
-              data.tasks.map((t: any) => (
-                <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderTop: "1px solid var(--border)", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{t.item_details}</div>
-                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                      {t.target_date ? `Due ${fmt(t.target_date)}` : "No due date"}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                    <AgingChip targetDate={t.target_date} status={t.status} />
-                    <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                  </div>
-                </div>
-              ))
+              <table className="table">
+                <thead>
+                  <tr><th>Task</th><th>Account</th><th>Due</th><th>Focus Week</th><th>Hashtags</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                  {displayedTasks.map((t: any) => (
+                    <tr key={t.id}>
+                      <td>
+                        {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
+                        <div>{t.item_details}</div>
+                      </td>
+                      <td>{acctName(t.account_id)}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{fmt(t.target_date)} <AgingChip targetDate={t.target_date} status={t.status} /></td>
+                      <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
+                      <td><HashtagChips tags={t.tags} /></td>
+                      <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
 
@@ -410,7 +426,14 @@ export default function PersonalPage() {
                         <option value="In Progress">In Progress</option>
                         <option value="Closed Pending Approval">Closed Pending Approval</option>
                         <option value="Closed Accepted">Closed Accepted</option>
+                        <option value="Dropped">Dropped</option>
                       </select>
+                    </div>
+                    <div className="form-row">
+                      <FocusWeekSelect
+                        value={taskEditForm.focus_week_start ?? ""}
+                        onChange={(v) => setTaskEditForm({ ...taskEditForm, focus_week_start: v })}
+                      />
                     </div>
                     <input className="input" placeholder="Title" value={taskEditForm.title ?? ""}
                       onChange={(e) => setTaskEditForm({ ...taskEditForm, title: e.target.value })}
@@ -418,6 +441,9 @@ export default function PersonalPage() {
                     <textarea className="input" rows={3} value={taskEditForm.item_details}
                       onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
                       style={{ resize: "vertical", marginBottom: 10 }} />
+                    <div style={{ marginBottom: 10 }}>
+                      <HashtagInput tags={taskEditForm.tags ?? []} onChange={(tags) => setTaskEditForm({ ...taskEditForm, tags })} />
+                    </div>
                     <div className="inline-actions">
                       <label style={{ fontSize: 13, cursor: "pointer" }}>
                         <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />

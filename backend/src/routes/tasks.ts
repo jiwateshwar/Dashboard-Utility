@@ -9,6 +9,28 @@ import { logAudit } from "../services/auditing.js";
 const router = Router();
 router.use(requireAuth);
 
+/** Normalizes free-form hashtag input: trims, strips a leading '#', lowercases, dedupes. */
+function normalizeTags(raw: any): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const cleaned = t.trim().replace(/^#/, "").toLowerCase();
+    if (cleaned) seen.add(cleaned);
+  }
+  return [...seen];
+}
+
+async function replaceTaskTags(taskId: string, tags: string[], userId: string) {
+  await query(`DELETE FROM task_tags WHERE task_id = $1`, [taskId]);
+  for (const tag of tags) {
+    await query(
+      `INSERT INTO task_tags (task_id, tag, created_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [taskId, tag, userId]
+    );
+  }
+}
+
 router.get("/", async (req, res) => {
   const { dashboard_id, include_archived } = req.query as any;
   if (!dashboard_id) return res.status(400).json({ error: "dashboard_id required" });
@@ -45,7 +67,12 @@ router.get("/", async (req, res) => {
               (SELECT array_agg(ou.name ORDER BY tow.user_id)
                FROM task_owners tow JOIN users ou ON ou.id = tow.user_id WHERE tow.task_id = t.id),
               ARRAY[u.name]
-            ) as owner_names
+            ) as owner_names,
+            COALESCE(
+              (SELECT array_agg(tg.tag ORDER BY tg.tag)
+               FROM task_tags tg WHERE tg.task_id = t.id),
+              ARRAY[]::text[]
+            ) as tags
      FROM tasks t
      JOIN child_dashboards cd ON t.dashboard_id = cd.id
      JOIN users u ON u.id = t.owner_id
@@ -69,6 +96,45 @@ router.get("/", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, aging_days: r.aging_days_calc })));
 });
 
+// Cross-dashboard hashtag click-through — same visibility rule as the global (no dashboard_id) mode of GET /search:
+// published, owned/created by me, or owned/created by a subordinate, or admin. No dashboard_access check,
+// matching the existing global-search precedent in routes/search.ts.
+router.get("/by-tag", async (req, res) => {
+  const { tag } = req.query as any;
+  if (!tag) return res.status(400).json({ error: "tag required" });
+  const userId = req.session.userId!;
+  const role = await getUserRole(userId);
+  const isAdmin = isAdminRole(role);
+  const subordinates = await getSubordinateIds(userId);
+  const normalizedTag = String(tag).trim().replace(/^#/, "").toLowerCase();
+
+  const { rows } = await query(
+    `SELECT t.*, u.name as owner_name, d.name as dashboard_name,
+            COALESCE(
+              (SELECT array_agg(tg.tag ORDER BY tg.tag)
+               FROM task_tags tg WHERE tg.task_id = t.id),
+              ARRAY[]::text[]
+            ) as tags
+     FROM tasks t
+     JOIN task_tags tt ON tt.task_id = t.id AND tt.tag = $1
+     JOIN users u ON u.id = t.owner_id
+     JOIN dashboards d ON d.id = t.dashboard_id
+     WHERE t.is_archived = false
+       AND ($4::boolean IS TRUE OR
+         t.publish_flag = true OR
+         t.owner_id = $2 OR
+         t.created_by = $2 OR
+         t.owner_id = ANY($3) OR
+         t.created_by = ANY($3) OR
+         EXISTS (SELECT 1 FROM task_owners tow WHERE tow.task_id = t.id AND tow.user_id = $2)
+       )
+     ORDER BY t.created_at DESC`,
+    [normalizedTag, userId, subordinates, isAdmin]
+  );
+
+  res.json(rows);
+});
+
 router.post("/", async (req, res) => {
   const userId = req.session.userId!;
   const {
@@ -81,7 +147,9 @@ router.post("/", async (req, res) => {
     owner_ids,
     target_date,
     sla_days,
-    publish_flag
+    publish_flag,
+    tags,
+    focus_week_start
   } = req.body as any;
 
   const ownerIdList: string[] = Array.isArray(owner_ids) ? owner_ids : (owner_ids ? [owner_ids] : []);
@@ -157,14 +225,19 @@ router.post("/", async (req, res) => {
   // owner_id stores the primary (first) owner for backward compat with close-request logic
   await query(
     `INSERT INTO tasks
-     (id, dashboard_id, category_id, account_id, title, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Open', $11)`,
-    [id, dashboard_id, category_id, resolvedAccountId, title || null, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false]
+     (id, dashboard_id, category_id, account_id, title, item_details, owner_id, created_by, target_date, sla_days, status, publish_flag, focus_week_start)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Open', $11, $12)`,
+    [id, dashboard_id, category_id, resolvedAccountId, title || null, item_details, ownerIdList[0], userId, target_date, sla_days || null, publish_flag ?? false, focus_week_start || null]
   );
 
   // Insert all owners into junction table
   for (const oid of ownerIdList) {
     await query(`INSERT INTO task_owners (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, oid]);
+  }
+
+  const tagList = normalizeTags(tags);
+  if (tagList.length > 0) {
+    await replaceTaskTags(id, tagList, userId);
   }
 
   res.json({ id });
@@ -173,14 +246,33 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const { title, item_details, owner_ids, target_date, publish_flag, status, category_id } = req.body as any;
+  const { title, item_details, owner_ids, target_date, publish_flag, status, category_id, tags, focus_week_start } = req.body as any;
 
-  const task = await query(`SELECT dashboard_id, owner_id, created_by, status FROM tasks WHERE id = $1`, [id]);
+  const task = await query(`SELECT dashboard_id, owner_id, created_by, status, focus_week_start FROM tasks WHERE id = $1`, [id]);
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
   const dashboardId = task.rows[0].dashboard_id as string;
 
   const canEdit = await canEditDashboard(userId, dashboardId);
   if (!canEdit) return res.status(403).json({ error: "No edit access" });
+
+  // Only enforce the stricter focus-week permission when the value is actually changing —
+  // edit forms always resend the current value, and that shouldn't block unrelated edits.
+  const currentFocusWeek = task.rows[0].focus_week_start
+    ? new Date(task.rows[0].focus_week_start).toISOString().slice(0, 10)
+    : null;
+  const focusWeekProvided = Object.prototype.hasOwnProperty.call(req.body, "focus_week_start")
+    && (focus_week_start || null) !== currentFocusWeek;
+  if (focusWeekProvided) {
+    const role = await getUserRole(userId);
+    const isTaskOwner = task.rows[0].owner_id === userId ||
+      (await query(`SELECT 1 FROM task_owners WHERE task_id = $1 AND user_id = $2`, [id, userId])).rows.length > 0;
+    const isCreator = task.rows[0].created_by === userId;
+    const isOwnerOfDash = await isDashboardOwner(userId, dashboardId);
+    const canSetFocus = isAdminRole(role) || isOwnerOfDash || isTaskOwner || isCreator;
+    if (!canSetFocus) {
+      return res.status(403).json({ error: "Only the creator, an owner, a dashboard owner, or an admin can set the focus week" });
+    }
+  }
 
   const ownerIdList: string[] | undefined = Array.isArray(owner_ids) ? owner_ids : undefined;
 
@@ -210,13 +302,14 @@ router.patch("/:id", async (req, res) => {
          publish_flag = COALESCE($6, publish_flag),
          status = COALESCE($7, status),
          category_id = COALESCE($8, category_id),
+         focus_week_start = CASE WHEN $9 THEN $10 ELSE focus_week_start END,
          closure_approved_at = CASE
-           WHEN $7 = 'Closed Accepted' AND closure_approved_at IS NULL THEN now()
+           WHEN $7 IN ('Closed Accepted', 'Dropped') AND closure_approved_at IS NULL THEN now()
            ELSE closure_approved_at
          END,
          updated_at = now()
      WHERE id = $1`,
-    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null]
+    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null, focusWeekProvided, focus_week_start || null]
   );
 
   if (ownerIdList && ownerIdList.length > 0) {
@@ -224,6 +317,10 @@ router.patch("/:id", async (req, res) => {
     for (const oid of ownerIdList) {
       await query(`INSERT INTO task_owners (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, oid]);
     }
+  }
+
+  if (Array.isArray(tags)) {
+    await replaceTaskTags(id, normalizeTags(tags), userId);
   }
 
   await logAudit({ entityType: "Task", entityId: id, changedBy: userId, oldValue: task.rows[0], newValue: req.body });

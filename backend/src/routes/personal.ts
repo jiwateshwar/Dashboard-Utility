@@ -8,7 +8,22 @@ router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;
-  const tasks = await query(`SELECT * FROM tasks WHERE is_archived = false AND (owner_id = $1 OR created_by = $1)`, [userId]);
+  const tasks = await query(
+    `SELECT t.*,
+            COALESCE(
+              (SELECT array_agg(tow.user_id ORDER BY tow.user_id)
+               FROM task_owners tow WHERE tow.task_id = t.id),
+              ARRAY[t.owner_id]
+            ) as owner_ids,
+            COALESCE(
+              (SELECT array_agg(tg.tag ORDER BY tg.tag)
+               FROM task_tags tg WHERE tg.task_id = t.id),
+              ARRAY[]::text[]
+            ) as tags
+     FROM tasks t
+     WHERE t.is_archived = false AND (t.owner_id = $1 OR t.created_by = $1)`,
+    [userId]
+  );
   const risks = await query(`SELECT * FROM risks WHERE is_archived = false AND risk_owner = $1`, [userId]);
   const decisions = await query(`SELECT * FROM decisions WHERE is_archived = false AND (decision_owner = $1 OR created_by = $1)`, [userId]);
   const escalations = await query(`SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC`, [userId]);
