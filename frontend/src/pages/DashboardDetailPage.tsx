@@ -436,6 +436,93 @@ export default function DashboardDetailPage() {
     );
   }
 
+  // Manage-tab task row — shared by the per-category groups and the "Uncategorised" group
+  // so both render the same edit-in-place form (previously only the categorised group did).
+  function renderTaskManageRow(t: any) {
+    return (
+      <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
+        {editingTaskId === t.id ? (
+          <div style={{ padding: "14px 0" }}>
+            <div className="form-row">
+              <select className="select" value={taskEditForm.category_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, category_id: e.target.value })}>
+                <option value="">Category</option>
+                {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <ComboBox
+                options={accountComboOptions}
+                selectedIds={taskEditForm.account_id ? [taskEditForm.account_id] : []}
+                onChange={(ids) => setTaskEditForm({ ...taskEditForm, account_id: ids[0] ?? "" })}
+                placeholder="Account"
+              />
+              <ComboBox
+                options={userComboOptions}
+                selectedIds={taskEditForm.owner_ids ?? []}
+                onChange={(ids) => setTaskEditForm({ ...taskEditForm, owner_ids: ids })}
+                placeholder="Owner(s)"
+                multi
+              />
+            </div>
+            <div className="form-row">
+              <input className="input" type="date" value={taskEditForm.target_date} onChange={(e) => setTaskEditForm({ ...taskEditForm, target_date: e.target.value })} />
+              <input className="input" placeholder="SLA days" value={taskEditForm.sla_days ?? ""} onChange={(e) => setTaskEditForm({ ...taskEditForm, sla_days: e.target.value })} />
+              <select className="select" value={taskEditForm.status} onChange={(e) => setTaskEditForm({ ...taskEditForm, status: e.target.value })}>
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Closed Pending Approval">Closed Pending Approval</option>
+                <option value="Closed Accepted">Closed Accepted</option>
+                <option value="Dropped">Dropped</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <FocusWeekSelect
+                value={taskEditForm.focus_week_start ?? ""}
+                onChange={(v) => setTaskEditForm({ ...taskEditForm, focus_week_start: v })}
+                disabled={!canSetFocusWeek(t)}
+              />
+            </div>
+            <input className="input" placeholder="Title" value={taskEditForm.title ?? ""}
+              onChange={(e) => setTaskEditForm({ ...taskEditForm, title: e.target.value })}
+              style={{ marginBottom: 8, fontWeight: 600 }} />
+            <textarea className="input" rows={3} value={taskEditForm.item_details}
+              onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
+              style={{ resize: "vertical", marginBottom: 10 }} />
+            <div style={{ marginBottom: 10 }}>
+              <HashtagInput tags={taskEditForm.tags ?? []} onChange={(tags) => setTaskEditForm({ ...taskEditForm, tags })} />
+            </div>
+            <div className="inline-actions">
+              <label style={{ fontSize: 13, cursor: "pointer" }}>
+                <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
+                Publish
+              </label>
+              <button className="button" onClick={() => saveTask(t.id)}>Save</button>
+              <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
+              <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
+              <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
+              <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
+              <div style={{ fontSize: 13, marginBottom: 3 }}>{t.item_details}</div>
+              <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
+                {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <AgingChip targetDate={t.target_date} status={t.status} />
+              <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
+              <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
+              <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-shell">
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
@@ -700,88 +787,7 @@ export default function DashboardDetailPage() {
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", padding: "10px 0 4px", letterSpacing: "0.06em" }}>
                     {cat.name}
                   </div>
-                  {catTasks.map((t) => (
-                    <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
-                      {editingTaskId === t.id ? (
-                        <div style={{ padding: "14px 0" }}>
-                          <div className="form-row">
-                            <select className="select" value={taskEditForm.category_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, category_id: e.target.value })}>
-                              <option value="">Category</option>
-                              {categoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                            <ComboBox
-                              options={accountComboOptions}
-                              selectedIds={taskEditForm.account_id ? [taskEditForm.account_id] : []}
-                              onChange={(ids) => setTaskEditForm({ ...taskEditForm, account_id: ids[0] ?? "" })}
-                              placeholder="Account"
-                            />
-                            <ComboBox
-                              options={userComboOptions}
-                              selectedIds={taskEditForm.owner_ids ?? []}
-                              onChange={(ids) => setTaskEditForm({ ...taskEditForm, owner_ids: ids })}
-                              placeholder="Owner(s)"
-                              multi
-                            />
-                          </div>
-                          <div className="form-row">
-                            <input className="input" type="date" value={taskEditForm.target_date} onChange={(e) => setTaskEditForm({ ...taskEditForm, target_date: e.target.value })} />
-                            <input className="input" placeholder="SLA days" value={taskEditForm.sla_days ?? ""} onChange={(e) => setTaskEditForm({ ...taskEditForm, sla_days: e.target.value })} />
-                            <select className="select" value={taskEditForm.status} onChange={(e) => setTaskEditForm({ ...taskEditForm, status: e.target.value })}>
-                              <option value="Open">Open</option>
-                              <option value="In Progress">In Progress</option>
-                              <option value="Closed Pending Approval">Closed Pending Approval</option>
-                              <option value="Closed Accepted">Closed Accepted</option>
-                              <option value="Dropped">Dropped</option>
-                            </select>
-                          </div>
-                          <div className="form-row">
-                            <FocusWeekSelect
-                              value={taskEditForm.focus_week_start ?? ""}
-                              onChange={(v) => setTaskEditForm({ ...taskEditForm, focus_week_start: v })}
-                              disabled={!canSetFocusWeek(t)}
-                            />
-                          </div>
-                          <input className="input" placeholder="Title" value={taskEditForm.title ?? ""}
-                            onChange={(e) => setTaskEditForm({ ...taskEditForm, title: e.target.value })}
-                            style={{ marginBottom: 8, fontWeight: 600 }} />
-                          <textarea className="input" rows={3} value={taskEditForm.item_details}
-                            onChange={(e) => setTaskEditForm({ ...taskEditForm, item_details: e.target.value })}
-                            style={{ resize: "vertical", marginBottom: 10 }} />
-                          <div style={{ marginBottom: 10 }}>
-                            <HashtagInput tags={taskEditForm.tags ?? []} onChange={(tags) => setTaskEditForm({ ...taskEditForm, tags })} />
-                          </div>
-                          <div className="inline-actions">
-                            <label style={{ fontSize: 13, cursor: "pointer" }}>
-                              <input type="checkbox" checked={taskEditForm.publish_flag} onChange={(e) => setTaskEditForm({ ...taskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
-                              Publish
-                            </label>
-                            <button className="button" onClick={() => saveTask(t.id)}>Save</button>
-                            <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
-                            <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
-                            <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
-                            <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                            <div style={{ fontSize: 13, marginBottom: 3 }}>{t.item_details}</div>
-                            <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                              {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
-                              {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                            <AgingChip targetDate={t.target_date} status={t.status} />
-                            <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                            <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
-                            <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {catTasks.map(renderTaskManageRow)}
                 </div>
               );
             })}
@@ -796,26 +802,7 @@ export default function DashboardDetailPage() {
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", padding: "10px 0 4px", letterSpacing: "0.06em" }}>
                     Uncategorised
                   </div>
-                  {uncategorised.map((t) => (
-                    <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                          <div style={{ fontSize: 13, marginBottom: 3 }}>{t.item_details}</div>
-                          <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                            {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
-                            {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <AgingChip targetDate={t.target_date} status={t.status} />
-                          <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                          <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
-                          <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  {uncategorised.map(renderTaskManageRow)}
                 </div>
               );
             })()}
