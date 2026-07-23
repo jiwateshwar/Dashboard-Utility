@@ -161,6 +161,12 @@ export default function DashboardDetailPage() {
     if (t.created_by === me.id) return true;
     return Array.isArray(t.owner_ids) ? t.owner_ids.includes(me.id) : t.owner_id === me.id;
   };
+  // Only the task's creator (or an admin) may accept its closure — mirrors the server-side check.
+  const canApprove = (t: any): boolean => {
+    if (!me) return false;
+    if (me.role === "Admin" || me.role === "SuperAdmin") return true;
+    return t.created_by === me.id;
+  };
 
   const accountComboOptions = useMemo(() => accountOptions.map((a) => ({ id: a.id, label: a.account_name })), [accountOptions]);
   // Extend options with proposed account so it shows as selected in the ComboBox
@@ -469,7 +475,7 @@ export default function DashboardDetailPage() {
                 <option value="Open">Open</option>
                 <option value="In Progress">In Progress</option>
                 <option value="Closed Pending Approval">Closed Pending Approval</option>
-                <option value="Closed Accepted">Closed Accepted</option>
+                <option value="Closed Accepted" disabled>Closed Accepted (use Approve)</option>
                 <option value="Dropped">Dropped</option>
               </select>
             </div>
@@ -496,7 +502,7 @@ export default function DashboardDetailPage() {
               </label>
               <button className="button" onClick={() => saveTask(t.id)}>Save</button>
               <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
-              <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
+              {canApprove(t) && <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>}
               <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
               <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
             </div>

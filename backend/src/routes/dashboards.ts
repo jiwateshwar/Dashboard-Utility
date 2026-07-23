@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getUserRole, isDashboardOwner, hasDashboardAccess, isAdminRole } from "../services/permission.js";
 import { CLOSED_TASK_STATUSES } from "../constants.js";
+import { notifyUser } from "../services/notifying.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -163,6 +164,17 @@ router.post("/access-requests/:id/approve", async (req, res) => {
     `UPDATE dashboard_access_requests SET status = 'Approved', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
     [id, userId]
   );
+
+  const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [request.dashboard_id]);
+  await notifyUser({
+    userId: request.user_id,
+    message: `You were granted access to dashboard "${dash.rows[0]?.name ?? "a dashboard"}"`,
+    type: "dashboard_assigned",
+    entityType: "Dashboard",
+    entityId: request.dashboard_id,
+    dashboardId: request.dashboard_id
+  });
+
   res.json({ ok: true });
 });
 
@@ -265,6 +277,16 @@ router.post("/", async (req, res) => {
       `INSERT INTO dashboard_owners (dashboard_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
       [id, uid]
     );
+    if (uid !== req.session.userId) {
+      await notifyUser({
+        userId: uid,
+        message: `You were made an owner of dashboard "${name}"`,
+        type: "dashboard_assigned",
+        entityType: "Dashboard",
+        entityId: id,
+        dashboardId: id
+      });
+    }
   }
   // Auto-seed fixed categories for every new dashboard
   await query(
@@ -415,6 +437,10 @@ router.put("/:id/owners", async (req, res) => {
     return res.status(400).json({ error: "At least one owner required" });
   }
 
+  const existing = await query(`SELECT user_id FROM dashboard_owners WHERE dashboard_id = $1`, [id]);
+  const existingOwnerIds: string[] = existing.rows.map((r: any) => r.user_id);
+  const newlyAddedOwners = owner_ids.filter((uid: string) => !existingOwnerIds.includes(uid));
+
   await query(`DELETE FROM dashboard_owners WHERE dashboard_id = $1`, [id]);
   for (const uid of owner_ids) {
     await query(
@@ -426,6 +452,22 @@ router.put("/:id/owners", async (req, res) => {
     `UPDATE dashboards SET primary_owner_id = $2, secondary_owner_id = NULL WHERE id = $1`,
     [id, owner_ids[0]]
   );
+
+  if (newlyAddedOwners.length > 0) {
+    const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [id]);
+    for (const uid of newlyAddedOwners) {
+      if (uid === userId) continue;
+      await notifyUser({
+        userId: uid,
+        message: `You were made an owner of dashboard "${dash.rows[0]?.name ?? "a dashboard"}"`,
+        type: "dashboard_assigned",
+        entityType: "Dashboard",
+        entityId: id,
+        dashboardId: id
+      });
+    }
+  }
+
   res.json({ ok: true });
 });
 
@@ -515,6 +557,19 @@ router.post("/:id/access", async (req, res) => {
      DO UPDATE SET can_view = EXCLUDED.can_view, can_edit = EXCLUDED.can_edit`,
     [id, target_user_id, can_view ?? true, can_edit ?? false]
   );
+
+  if (target_user_id !== userId) {
+    const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [id]);
+    await notifyUser({
+      userId: target_user_id,
+      message: `You were granted access to dashboard "${dash.rows[0]?.name ?? "a dashboard"}"`,
+      type: "dashboard_assigned",
+      entityType: "Dashboard",
+      entityId: id,
+      dashboardId: id
+    });
+  }
+
   res.json({ ok: true });
 });
 

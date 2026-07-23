@@ -5,9 +5,43 @@ import { query } from "../db.js";
 import { getSubordinateIds } from "../services/hierarchy.js";
 import { getUserRole, hasDashboardAccess, isDashboardOwner, canEditDashboard, isAdminRole } from "../services/permission.js";
 import { logAudit } from "../services/auditing.js";
+import { notifyUser } from "../services/notifying.js";
 
 const router = Router();
 router.use(requireAuth);
+
+async function notifyNewOwners(params: { taskId: string; dashboardId: string; dashboardName: string; label: string; newOwnerIds: string[]; actorUserId: string }) {
+  const { taskId, dashboardId, dashboardName, label, newOwnerIds, actorUserId } = params;
+  for (const oid of newOwnerIds) {
+    if (oid === actorUserId) continue;
+    await notifyUser({
+      userId: oid,
+      message: `You were assigned a task in ${dashboardName}: ${label}`,
+      type: "task_assigned",
+      entityType: "Task",
+      entityId: taskId,
+      dashboardId
+    });
+  }
+}
+
+async function notifyStatusChange(params: {
+  taskId: string; dashboardId: string; dashboardName: string; label: string;
+  oldStatus: string; newStatus: string; actorUserId: string; recipientIds: string[];
+}) {
+  const { taskId, dashboardId, dashboardName, label, oldStatus, newStatus, actorUserId, recipientIds } = params;
+  const recipients = [...new Set(recipientIds)].filter((r) => r && r !== actorUserId);
+  for (const recipientId of recipients) {
+    await notifyUser({
+      userId: recipientId,
+      message: `Status of "${label}" changed from ${oldStatus} to ${newStatus} in ${dashboardName}`,
+      type: "task_status_changed",
+      entityType: "Task",
+      entityId: taskId,
+      dashboardId
+    });
+  }
+}
 
 /** Normalizes free-form hashtag input: trims, strips a leading '#', lowercases, dedupes. */
 function normalizeTags(raw: any): string[] {
@@ -240,6 +274,16 @@ router.post("/", async (req, res) => {
     await replaceTaskTags(id, tagList, userId);
   }
 
+  const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [dashboard_id]);
+  await notifyNewOwners({
+    taskId: id,
+    dashboardId: dashboard_id,
+    dashboardName: dash.rows[0]?.name ?? "a dashboard",
+    label: title || item_details,
+    newOwnerIds: ownerIdList,
+    actorUserId: userId
+  });
+
   res.json({ id });
 });
 
@@ -248,12 +292,26 @@ router.patch("/:id", async (req, res) => {
   const userId = req.session.userId!;
   const { title, item_details, owner_ids, target_date, publish_flag, status, category_id, tags, focus_week_start } = req.body as any;
 
-  const task = await query(`SELECT dashboard_id, owner_id, created_by, status, focus_week_start FROM tasks WHERE id = $1`, [id]);
+  const task = await query(
+    `SELECT t.dashboard_id, t.owner_id, t.created_by, t.status, t.focus_week_start, t.title, t.item_details, d.name as dashboard_name
+     FROM tasks t JOIN dashboards d ON d.id = t.dashboard_id
+     WHERE t.id = $1`,
+    [id]
+  );
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
   const dashboardId = task.rows[0].dashboard_id as string;
+  const oldStatus = task.rows[0].status as string;
+  const dashboardName = task.rows[0].dashboard_name as string;
+  const label = task.rows[0].title || task.rows[0].item_details;
 
   const canEdit = await canEditDashboard(userId, dashboardId);
   if (!canEdit) return res.status(403).json({ error: "No edit access" });
+
+  // 'Closed Accepted' must only be reached via POST /:id/approve, which enforces who may
+  // accept a closure and records closure_approved_by — PATCH bypassed that entirely before.
+  if (status === "Closed Accepted" && oldStatus !== "Closed Accepted") {
+    return res.status(400).json({ error: "Use the Approve action to accept a task's closure" });
+  }
 
   // Only enforce the stricter focus-week permission when the value is actually changing —
   // edit forms always resend the current value, and that shouldn't block unrelated edits.
@@ -275,6 +333,11 @@ router.patch("/:id", async (req, res) => {
   }
 
   const ownerIdList: string[] | undefined = Array.isArray(owner_ids) ? owner_ids : undefined;
+
+  const existingOwners = await query(`SELECT user_id FROM task_owners WHERE task_id = $1`, [id]);
+  const existingOwnerIds: string[] = existingOwners.rows.map((r: any) => r.user_id);
+  const newlyAddedOwners = ownerIdList ? ownerIdList.filter((oid) => !existingOwnerIds.includes(oid)) : [];
+  const finalOwnerIds = ownerIdList && ownerIdList.length > 0 ? ownerIdList : existingOwnerIds;
 
   if (ownerIdList && ownerIdList.length > 0) {
     for (const oid of ownerIdList) {
@@ -304,7 +367,7 @@ router.patch("/:id", async (req, res) => {
          category_id = COALESCE($8, category_id),
          focus_week_start = CASE WHEN $9 THEN $10 ELSE focus_week_start END,
          closure_approved_at = CASE
-           WHEN $7 IN ('Closed Accepted', 'Dropped') AND closure_approved_at IS NULL THEN now()
+           WHEN $7 = 'Dropped' AND closure_approved_at IS NULL THEN now()
            ELSE closure_approved_at
          END,
          updated_at = now()
@@ -323,6 +386,17 @@ router.patch("/:id", async (req, res) => {
     await replaceTaskTags(id, normalizeTags(tags), userId);
   }
 
+  if (newlyAddedOwners.length > 0) {
+    await notifyNewOwners({ taskId: id, dashboardId, dashboardName, label, newOwnerIds: newlyAddedOwners, actorUserId: userId });
+  }
+  if (status && status !== oldStatus) {
+    await notifyStatusChange({
+      taskId: id, dashboardId, dashboardName, label,
+      oldStatus, newStatus: status, actorUserId: userId,
+      recipientIds: [task.rows[0].created_by, ...finalOwnerIds]
+    });
+  }
+
   await logAudit({ entityType: "Task", entityId: id, changedBy: userId, oldValue: task.rows[0], newValue: req.body });
 
   res.json({ ok: true });
@@ -331,7 +405,12 @@ router.patch("/:id", async (req, res) => {
 router.post("/:id/close-request", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const task = await query(`SELECT dashboard_id, owner_id FROM tasks WHERE id = $1`, [id]);
+  const task = await query(
+    `SELECT t.dashboard_id, t.owner_id, t.created_by, t.title, t.item_details, d.name as dashboard_name
+     FROM tasks t JOIN dashboards d ON d.id = t.dashboard_id
+     WHERE t.id = $1`,
+    [id]
+  );
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
 
   const isOwner = await query(`SELECT 1 FROM task_owners WHERE task_id = $1 AND user_id = $2`, [id, userId]);
@@ -345,6 +424,18 @@ router.post("/:id/close-request", async (req, res) => {
      WHERE id = $1`,
     [id]
   );
+
+  await notifyStatusChange({
+    taskId: id,
+    dashboardId: task.rows[0].dashboard_id,
+    dashboardName: task.rows[0].dashboard_name,
+    label: task.rows[0].title || task.rows[0].item_details,
+    oldStatus: "Open/In Progress",
+    newStatus: "Closed Pending Approval",
+    actorUserId: userId,
+    recipientIds: [task.rows[0].created_by]
+  });
+
   res.json({ ok: true });
 });
 
@@ -352,7 +443,9 @@ router.post("/:id/approve", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
   const task = await query(
-    `SELECT dashboard_id, created_by FROM tasks WHERE id = $1`,
+    `SELECT t.dashboard_id, t.created_by, t.title, t.item_details, d.name as dashboard_name
+     FROM tasks t JOIN dashboards d ON d.id = t.dashboard_id
+     WHERE t.id = $1`,
     [id]
   );
   if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -360,12 +453,9 @@ router.post("/:id/approve", async (req, res) => {
   const dashboardId = task.rows[0].dashboard_id as string;
   const creatorId = task.rows[0].created_by as string;
 
-  const manager = await query(`SELECT manager_id FROM users WHERE id = $1`, [creatorId]);
-  const creatorManagerId = manager.rows[0]?.manager_id;
-  const isOwner = await isDashboardOwner(userId, dashboardId);
-
-  if (![creatorId, creatorManagerId].includes(userId) && !isOwner) {
-    return res.status(403).json({ error: "Not allowed to approve" });
+  const role = await getUserRole(userId);
+  if (userId !== creatorId && !isAdminRole(role)) {
+    return res.status(403).json({ error: "Only the task's creator (or an admin) can approve its closure" });
   }
 
   await query(
@@ -374,6 +464,18 @@ router.post("/:id/approve", async (req, res) => {
      WHERE id = $1`,
     [id, userId]
   );
+
+  const owners = await query(`SELECT user_id FROM task_owners WHERE task_id = $1`, [id]);
+  await notifyStatusChange({
+    taskId: id,
+    dashboardId,
+    dashboardName: task.rows[0].dashboard_name,
+    label: task.rows[0].title || task.rows[0].item_details,
+    oldStatus: "Closed Pending Approval",
+    newStatus: "Closed Accepted",
+    actorUserId: userId,
+    recipientIds: owners.rows.map((r: any) => r.user_id)
+  });
 
   await logAudit({
     entityType: "Task",

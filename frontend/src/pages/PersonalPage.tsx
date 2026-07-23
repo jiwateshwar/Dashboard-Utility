@@ -77,18 +77,28 @@ export default function PersonalPage() {
   const [taskEditForm, setTaskEditForm] = useState<any>({});
   const [taskError, setTaskError] = useState<string | null>(null);
   const [displayedTasks, setDisplayedTasks] = useState<any[]>([]);
+  const [me, setMe] = useState<any>(null);
 
   useEffect(() => {
     Promise.all([
       api("/personal"),
       api("/accounts"),
       api("/users"),
-    ]).then(([personal, accts, usrs]) => {
+      api("/auth/me"),
+    ]).then(([personal, accts, usrs, meRes]) => {
       setData(personal);
       setAccounts(accts);
       setUsers(usrs);
+      setMe(meRes);
     });
   }, []);
+
+  // Only the task's creator (or an admin) may accept its closure.
+  function canApprove(t: any): boolean {
+    if (!me) return false;
+    if (me.role === "Admin" || me.role === "SuperAdmin") return true;
+    return t.created_by === me.id;
+  }
 
   const accountComboOptions = useMemo(
     () => accounts.filter((a) => a.is_active !== false).map((a) => ({ id: a.id, label: a.account_name })),
@@ -425,7 +435,7 @@ export default function PersonalPage() {
                         <option value="Open">Open</option>
                         <option value="In Progress">In Progress</option>
                         <option value="Closed Pending Approval">Closed Pending Approval</option>
-                        <option value="Closed Accepted">Closed Accepted</option>
+                        <option value="Closed Accepted" disabled>Closed Accepted (use Approve)</option>
                         <option value="Dropped">Dropped</option>
                       </select>
                     </div>
@@ -451,7 +461,7 @@ export default function PersonalPage() {
                       </label>
                       <button className="button" onClick={() => saveTask(t.id)}>Save</button>
                       <button className="button secondary" onClick={() => requestTaskClose(t.id)}>Request Close</button>
-                      <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>
+                      {canApprove(t) && <button className="button secondary" onClick={() => approveTask(t.id)}>Approve</button>}
                       <button className="button secondary" onClick={() => setEditingTaskId(null)}>Cancel</button>
                       <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
                     </div>

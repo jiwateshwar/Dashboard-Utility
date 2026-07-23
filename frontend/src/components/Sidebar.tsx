@@ -7,6 +7,7 @@ declare const __APP_VERSION__: string;
 
 export default function Sidebar({ user }: { user: User }) {
   const [pendingSignups, setPendingSignups] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const isAdmin = user.role === "Admin" || user.role === "SuperAdmin";
 
   useEffect(() => {
@@ -15,6 +16,12 @@ export default function Sidebar({ user }: { user: User }) {
       .then((d: any) => setPendingSignups(d.count))
       .catch(() => {});
   }, [isAdmin]);
+
+  useEffect(() => {
+    api("/notifications/unread-count")
+      .then((d: any) => setUnreadNotifications(d.count))
+      .catch(() => {});
+  }, []);
 
   return (
     <aside className="sidebar" style={{ display: "flex", flexDirection: "column" }}>
@@ -62,8 +69,13 @@ export default function Sidebar({ user }: { user: User }) {
           Access Logs
         </NavLink>
       )}
-      <NavLink className="nav-item" to="/notifications">
-        Escalations
+      <NavLink className="nav-item" to="/notifications" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        Notifications
+        {unreadNotifications > 0 && (
+          <span style={{ background: "#e53935", color: "#fff", borderRadius: 999, padding: "1px 7px", fontSize: 11, fontWeight: 700, lineHeight: 1.6 }}>
+            {unreadNotifications}
+          </span>
+        )}
       </NavLink>
       <NavLink className="nav-item" to="/feedback">
         Feedback

@@ -2,6 +2,7 @@ import cron from "node-cron";
 import dayjs from "dayjs";
 import { runArchival } from "../services/archiver.js";
 import { runEscalations } from "../services/escalation.js";
+import { notifyOverdueTasks } from "../services/overdueNotifier.js";
 import { query } from "../db.js";
 import { buildSnapshotContent } from "../services/publishing.js";
 import { v4 as uuid } from "uuid";
@@ -26,5 +27,6 @@ async function runPublishingCycle() {
 cron.schedule("0 2 * * *", async () => {
   await runArchival();
   await runEscalations();
+  await notifyOverdueTasks();
   await runPublishingCycle();
 });
