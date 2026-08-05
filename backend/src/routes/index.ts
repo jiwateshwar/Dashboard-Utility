@@ -18,6 +18,9 @@ import escalationsRouter from "./escalations.js";
 import auditRouter from "./audit.js";
 import feedbackRouter from "./feedback.js";
 import adminRouter from "./admin.js";
+import linksRouter from "./links.js";
+import shareTeamsRouter from "./shareTeams.js";
+import dbSnapshotsRouter from "./dbSnapshots.js";
 
 export const router = Router();
 
@@ -40,3 +43,6 @@ router.use("/escalations", escalationsRouter);
 router.use("/audit", auditRouter);
 router.use("/feedback", feedbackRouter);
 router.use("/admin", adminRouter);
+router.use("/links", linksRouter);
+router.use("/share-teams", shareTeamsRouter);
+router.use("/db-snapshots", dbSnapshotsRouter);

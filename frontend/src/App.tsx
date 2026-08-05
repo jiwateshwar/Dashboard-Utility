@@ -7,6 +7,7 @@ import DashboardDetailPage from "./pages/DashboardDetailPage";
 import PersonalPage from "./pages/PersonalPage";
 import TeamPage from "./pages/TeamPage";
 import SearchPage from "./pages/SearchPage";
+import LinksPage from "./pages/LinksPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AdminPage from "./pages/AdminPage";
 import EscalationRulesPage from "./pages/EscalationRulesPage";
@@ -15,6 +16,7 @@ import SnapshotsPage from "./pages/SnapshotsPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import AccessLogPage from "./pages/AccessLogPage";
 import ProfilePage from "./pages/ProfilePage";
+import SystemBackupsPage from "./pages/SystemBackupsPage";
 import Sidebar from "./components/Sidebar";
 
 export type User = {
@@ -22,6 +24,7 @@ export type User = {
   name: string;
   email: string;
   role: "Admin" | "SuperAdmin" | "User";
+  sso_linked?: boolean;
 };
 
 export default function App() {
@@ -127,6 +130,7 @@ export default function App() {
             <Route path="/personal" element={<PersonalPage />} />
             <Route path="/team" element={<TeamPage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/links" element={<LinksPage />} />
             <Route path="/manage" element={<AdminPage />} />
             <Route path="/snapshots" element={<SnapshotsPage />} />
             <Route path="/escalations" element={<EscalationRulesPage />} />
@@ -134,6 +138,7 @@ export default function App() {
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/feedback" element={<FeedbackPage user={user} />} />
             <Route path="/access-logs" element={<AccessLogPage />} />
+            <Route path="/system-backups" element={<SystemBackupsPage />} />
             <Route path="/profile" element={<ProfilePage user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

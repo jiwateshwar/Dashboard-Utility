@@ -1,8 +1,19 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
+const API_URL = import.meta.env.VITE_API_URL ?? "";
+
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  expired: "Your Microsoft sign-in took too long and expired. Please try again.",
+  failed: "Microsoft sign-in failed. Please try again.",
+  wrong_tenant: "That Microsoft account belongs to a different organization.",
+  account_disabled: "Your account has been deactivated. Contact an administrator.",
+  already_linked: "That PRISM account is already linked to a different Microsoft account.",
+  not_configured: "Microsoft sign-in is not available on this deployment."
+};
+
 export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void }) {
-  const [step, setStep] = useState<"email" | "otp" | "signup">("email");
+  const [step, setStep] = useState<"email" | "otp" | "signup" | "sso-pending">("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,6 +26,25 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
   useEffect(() => {
     api("/auth/stats").then(setStats).catch(() => {});
   }, []);
+
+  // Handle the redirect back from the Entra ID SSO flow.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ssoStatus = params.get("sso");
+    const ssoError = params.get("ssoError");
+    if (ssoStatus === "pending") {
+      setStep("sso-pending");
+    } else if (ssoError) {
+      setError(SSO_ERROR_MESSAGES[ssoError] || "Microsoft sign-in failed. Please try again.");
+    }
+    if (ssoStatus || ssoError) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
+
+  function handleMicrosoftSignIn() {
+    window.location.href = `${API_URL}/api/auth/entra/login`;
+  }
 
   async function handleEmail() {
     setError(null);
@@ -151,6 +181,27 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
               <button className="button" style={{ marginTop: 12, width: "100%" }} onClick={handleEmail}>
                 Continue
               </button>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0" }}>
+                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>or</span>
+                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              </div>
+
+              <button
+                className="button secondary"
+                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                onClick={handleMicrosoftSignIn}
+              >
+                <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true">
+                  <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                  <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                  <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                  <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                </svg>
+                Sign in with Microsoft
+              </button>
+
               <div style={{ marginTop: 20, textAlign: "center" }}>
                 <button
                   onClick={openSignup}
@@ -159,6 +210,22 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
                   Don't have access? Request it →
                 </button>
               </div>
+            </>
+          )}
+
+          {/* ── SSO: pending admin approval ── */}
+          {step === "sso-pending" && (
+            <>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+              <h2 style={{ marginBottom: 8 }}>Access request submitted</h2>
+              <p style={{ color: "var(--muted)", fontSize: 14, lineHeight: 1.6, marginBottom: 24 }}>
+                We recognized your Microsoft sign-in, but no PRISM account exists for you yet.
+                A request has been sent to administrators — you'll be able to sign in with Microsoft
+                once it's approved.
+              </p>
+              <button className="button secondary" style={{ width: "100%" }} onClick={backToLogin}>
+                ← Back to login
+              </button>
             </>
           )}
 

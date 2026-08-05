@@ -9,6 +9,7 @@ export default function Sidebar({ user }: { user: User }) {
   const [pendingSignups, setPendingSignups] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const isAdmin = user.role === "Admin" || user.role === "SuperAdmin";
+  const isSuperAdmin = user.role === "SuperAdmin";
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -47,6 +48,9 @@ export default function Sidebar({ user }: { user: User }) {
       <NavLink className="nav-item" to="/search">
         Search
       </NavLink>
+      <NavLink className="nav-item" to="/links">
+        Links
+      </NavLink>
       <NavLink className="nav-item" to="/manage" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         Admin & Owners
         {pendingSignups > 0 && (
@@ -67,6 +71,11 @@ export default function Sidebar({ user }: { user: User }) {
       {isAdmin && (
         <NavLink className="nav-item" to="/access-logs">
           Access Logs
+        </NavLink>
+      )}
+      {isSuperAdmin && (
+        <NavLink className="nav-item" to="/system-backups">
+          System Backups
         </NavLink>
       )}
       <NavLink className="nav-item" to="/notifications" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
 export default function AdminPage() {
-  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests" | "delete-requests">("users");
+  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "teams" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests" | "delete-requests">("users");
   const [me, setMe] = useState<any>(null);
   const [signupRequests, setSignupRequests] = useState<any[]>([]);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
@@ -24,6 +24,13 @@ export default function AdminPage() {
   const [groupDashboards, setGroupDashboards] = useState<any[]>([]);
   const [groupDashboardsLoading, setGroupDashboardsLoading] = useState(false);
 
+  // Team management (Links sharing groups)
+  const [teams, setTeams] = useState<any[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [newTeam, setNewTeam] = useState({ name: "", description: "" });
+
   const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", role: "User" });
   const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; manager_id: string; role: string; is_active: boolean } | null>(null);
   const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[], parent_dashboard_id: "" });
@@ -41,7 +48,8 @@ export default function AdminPage() {
       const results = await Promise.allSettled([
         api("/users"), api("/dashboards"), api("/groups"),
         api("/accounts"), api("/admin/signup-requests"), api("/dashboards/access-requests"),
-        api("/accounts/pending"), api("/auth/me"), api("/dashboards/delete-requests")
+        api("/accounts/pending"), api("/auth/me"), api("/dashboards/delete-requests"),
+        api("/share-teams")
       ]);
       if (results[0].status === "fulfilled") setUsers(results[0].value as any[]);
       if (results[1].status === "fulfilled") setDashboards(results[1].value as any[]);
@@ -52,6 +60,7 @@ export default function AdminPage() {
       if (results[6].status === "fulfilled") setPendingAccounts(results[6].value as any[]);
       if (results[7].status === "fulfilled") setMe(results[7].value);
       if (results[8].status === "fulfilled") setDeleteRequests(results[8].value as any[]);
+      if (results[9].status === "fulfilled") setTeams(results[9].value as any[]);
     } catch (err: any) { setError(err.message || "Failed to load data"); }
   }
 
@@ -65,6 +74,15 @@ export default function AdminPage() {
       .catch(() => setGroupDashboards([]))
       .finally(() => setGroupDashboardsLoading(false));
   }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (!selectedTeamId) { setTeamMembers([]); return; }
+    setTeamMembersLoading(true);
+    api(`/share-teams/${selectedTeamId}/members`)
+      .then(setTeamMembers)
+      .catch(() => setTeamMembers([]))
+      .finally(() => setTeamMembersLoading(false));
+  }, [selectedTeamId]);
 
   useEffect(() => {
     if (!categoryDashboard) { setCategories([]); return; }
@@ -212,6 +230,32 @@ export default function AdminPage() {
     } catch (err: any) { setError(err.message); }
   }
 
+  async function handleCreateTeam() {
+    setError(null);
+    try {
+      await api("/share-teams", { method: "POST", body: JSON.stringify(newTeam) });
+      setNewTeam({ name: "", description: "" });
+      await loadAll();
+    } catch (err: any) { setError(err.message); }
+  }
+
+  async function toggleTeamMember(userId: string, currentlyIn: boolean) {
+    if (!selectedTeamId) return;
+    setError(null);
+    try {
+      if (currentlyIn) {
+        await api(`/share-teams/${selectedTeamId}/members/${userId}`, { method: "DELETE" });
+      } else {
+        await api(`/share-teams/${selectedTeamId}/members`, {
+          method: "POST",
+          body: JSON.stringify({ user_ids: [userId] })
+        });
+      }
+      const updated = await api(`/share-teams/${selectedTeamId}/members`);
+      setTeamMembers(updated);
+    } catch (err: any) { setError(err.message); }
+  }
+
   async function handleApproveAccessRequest(id: string) {
     setError(null);
     try {
@@ -296,7 +340,7 @@ export default function AdminPage() {
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
 
       <div className="inline-actions" style={{ marginBottom: 16 }}>
-        {(["users", "dashboards", "groups", "categories", "access"] as const).map((t) => (
+        {(["users", "dashboards", "groups", "teams", "categories", "access"] as const).map((t) => (
           <button key={t} className={`button ${tab === t ? "" : "secondary"}`} onClick={() => setTab(t)} style={{ textTransform: "capitalize" }}>{t}</button>
         ))}
         <button className={`button ${tab === "accounts" ? "" : "secondary"}`} onClick={() => setTab("accounts")}>
@@ -604,6 +648,93 @@ export default function AdminPage() {
         </div>
       )}
 
+      {tab === "teams" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="card">
+            <h3 style={{ margin: "0 0 4px 0" }}>Create Team</h3>
+            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 12 }}>
+              Teams control who links can be shared with — separate from the dashboard-tagging Groups above.
+            </p>
+            <div className="form-row">
+              <input className="input" placeholder="Team name" value={newTeam.name} onChange={(e) => setNewTeam({ ...newTeam, name: e.target.value })} />
+              <input className="input" placeholder="Description (optional)" value={newTeam.description} onChange={(e) => setNewTeam({ ...newTeam, description: e.target.value })} />
+              <button className="button" onClick={handleCreateTeam}>Create</button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16, alignItems: "start" }}>
+            <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontWeight: 600, fontSize: 13 }}>
+                Teams ({teams.length})
+              </div>
+              {teams.length === 0 ? (
+                <div style={{ padding: 16, color: "var(--muted)", fontSize: 13 }}>No teams yet</div>
+              ) : (
+                teams.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setSelectedTeamId(t.id === selectedTeamId ? null : t.id)}
+                    style={{
+                      padding: "10px 16px", cursor: "pointer", borderBottom: "1px solid var(--border)",
+                      background: selectedTeamId === t.id ? "rgba(29,99,237,0.08)" : "transparent",
+                      borderLeft: selectedTeamId === t.id ? "3px solid #1d63ed" : "3px solid transparent"
+                    }}
+                  >
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{t.name}</div>
+                    {t.description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{t.description}</div>}
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{t.member_count} member{t.member_count === 1 ? "" : "s"}</div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="card">
+              {!selectedTeamId ? (
+                <div style={{ color: "var(--muted)", fontSize: 13, textAlign: "center", padding: 24 }}>
+                  Select a team to manage its members
+                </div>
+              ) : teamMembersLoading ? (
+                <div style={{ color: "var(--muted)", fontSize: 13 }}>Loading…</div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0 }}>
+                      {teams.find((t) => t.id === selectedTeamId)?.name} — Members
+                    </h3>
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                      {teamMembers.filter((m) => m.in_team).length} of {teamMembers.length} in team
+                    </span>
+                  </div>
+                  {teamMembers.length === 0 ? (
+                    <div style={{ color: "var(--muted)", fontSize: 13 }}>No users</div>
+                  ) : (
+                    teamMembers.map((m) => (
+                      <div key={m.user_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderTop: "1px solid var(--border)" }}>
+                        <input
+                          type="checkbox"
+                          checked={m.in_team}
+                          onChange={() => toggleTeamMember(m.user_id, m.in_team)}
+                          style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, fontSize: 14 }}>{m.name}</div>
+                          <div style={{ fontSize: 12, color: "var(--muted)" }}>{m.email}</div>
+                        </div>
+                        {m.in_team && (
+                          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(46,189,133,0.12)", color: "#2ebd85", fontWeight: 600, flexShrink: 0 }}>
+                            Member
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {tab === "accounts" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {pendingAccounts.length > 0 && (
@@ -745,17 +876,18 @@ export default function AdminPage() {
           <h3 style={{ margin: "0 0 16px 0" }}>Signup Requests</h3>
           <table className="table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Manager</th><th>Requested</th><th>Status</th><th>Actions</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Manager</th><th>Source</th><th>Requested</th><th>Status</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {signupRequests.length === 0 && (
-                <tr><td colSpan={6} style={{ color: "var(--muted)", textAlign: "center" }}>No signup requests</td></tr>
+                <tr><td colSpan={7} style={{ color: "var(--muted)", textAlign: "center" }}>No signup requests</td></tr>
               )}
               {signupRequests.map((r) => (
                 <tr key={r.id}>
                   <td style={{ fontWeight: 500 }}>{r.name}</td>
                   <td style={{ color: "var(--muted)" }}>{r.email}</td>
                   <td style={{ color: "var(--muted)" }}>{r.manager_name || "—"}</td>
+                  <td style={{ color: "var(--muted)", fontSize: 13 }}>{r.via_sso ? "Microsoft SSO" : "Manual"}</td>
                   <td style={{ color: "var(--muted)", fontSize: 13 }}>{new Date(r.requested_at).toLocaleString()}</td>
                   <td>
                     <span style={{

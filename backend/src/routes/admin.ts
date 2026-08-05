@@ -61,7 +61,8 @@ router.get("/signup-requests", async (req, res) => {
   const { rows } = await query(
     `SELECT sr.id, sr.name, sr.email, sr.requested_at, sr.status,
             u.name  AS manager_name,
-            r.name  AS reviewed_by_name
+            r.name  AS reviewed_by_name,
+            sr.sso_oid IS NOT NULL AS via_sso
      FROM signup_requests sr
      LEFT JOIN users u ON u.id = sr.manager_id
      LEFT JOIN users r ON r.id = sr.reviewed_by
@@ -89,11 +90,26 @@ router.post("/signup-requests/:id/approve", async (req, res) => {
     level = Math.min((mgr.rows[0]?.level ?? 0) + 1, 5);
   }
 
-  await query(
-    `INSERT INTO users (id, name, email, manager_id, level, role, is_active)
-     VALUES (gen_random_uuid(), $1, $2, $3, $4, 'User', true)`,
-    [sr.name, sr.email, sr.manager_id, level]
-  );
+  if (sr.sso_oid) {
+    // SSO-originated request: create the user and its Entra identity link
+    // in one statement so the next SSO login for this person succeeds directly.
+    await query(
+      `WITH new_user AS (
+         INSERT INTO users (id, name, email, manager_id, level, role, is_active)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'User', true)
+         RETURNING id
+       )
+       INSERT INTO sso_identities (user_id, provider, tenant_id, oid, email_at_link)
+       SELECT id, $5, $6, $7, $2 FROM new_user`,
+      [sr.name, sr.email, sr.manager_id, level, sr.sso_provider, sr.sso_tenant_id, sr.sso_oid]
+    );
+  } else {
+    await query(
+      `INSERT INTO users (id, name, email, manager_id, level, role, is_active)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, 'User', true)`,
+      [sr.name, sr.email, sr.manager_id, level]
+    );
+  }
   await query(
     `UPDATE signup_requests
      SET status = 'Approved', reviewed_by = $2, reviewed_at = now()

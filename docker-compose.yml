@@ -21,8 +21,18 @@ services:
       DATABASE_URL: postgres://prism:prism@db:5432/prism
       SESSION_SECRET: prism_dev_secret
       CORS_ORIGIN: https://prism.theshabd.org
+      ENTRA_TENANT_ID: ""
+      ENTRA_CLIENT_ID: ""
+      ENTRA_CLIENT_SECRET: ""
+      ENTRA_REDIRECT_URI: ""
+      SNAPSHOT_DIR: /app/data/snapshots
+      SNAPSHOT_RETENTION_WEEKLY: 12
+      SNAPSHOT_RETENTION_SAFETY: 5
+      SNAPSHOT_MAX_UPLOAD_MB: 500
     ports:
       - "4000:4000"
+    volumes:
+      - prism_snapshots:/app/data/snapshots
     depends_on:
       - db
 
@@ -37,3 +47,4 @@ services:
 
 volumes:
   prism_db:
+  prism_snapshots:

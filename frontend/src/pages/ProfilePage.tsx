@@ -53,10 +53,16 @@ export default function ProfilePage({ user }: { user: User }) {
           <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Email</div>
           <div>{user.email}</div>
         </div>
-        <div>
+        <div style={{ marginBottom: user.sso_linked ? 14 : 0 }}>
           <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", marginBottom: 4 }}>Role</div>
           <div>{user.role}</div>
         </div>
+        {user.sso_linked && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#2ebd85", fontWeight: 500 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#2ebd85", display: "inline-block" }} />
+            Signed in via Microsoft (SSO)
+          </div>
+        )}
       </div>
 
       {/* Employee ID update */}

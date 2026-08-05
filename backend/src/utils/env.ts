@@ -13,5 +13,18 @@ export const env = {
   port: Number(process.env.PORT || 4000),
   databaseUrl: process.env.DATABASE_URL as string,
   sessionSecret: process.env.SESSION_SECRET as string,
-  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173"
+  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173",
+  entra: {
+    tenantId: process.env.ENTRA_TENANT_ID,
+    clientId: process.env.ENTRA_CLIENT_ID,
+    clientSecret: process.env.ENTRA_CLIENT_SECRET,
+    redirectUri: process.env.ENTRA_REDIRECT_URI,
+    get enabled() {
+      return !!(this.tenantId && this.clientId && this.clientSecret && this.redirectUri);
+    }
+  },
+  snapshotDir: process.env.SNAPSHOT_DIR || "./data/snapshots",
+  snapshotRetentionWeekly: Number(process.env.SNAPSHOT_RETENTION_WEEKLY || 12),
+  snapshotRetentionSafety: Number(process.env.SNAPSHOT_RETENTION_SAFETY || 5),
+  snapshotMaxUploadMb: Number(process.env.SNAPSHOT_MAX_UPLOAD_MB || 500)
 };

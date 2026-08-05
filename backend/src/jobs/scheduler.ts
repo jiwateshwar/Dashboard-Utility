@@ -5,6 +5,7 @@ import { runEscalations } from "../services/escalation.js";
 import { notifyOverdueTasks } from "../services/overdueNotifier.js";
 import { query } from "../db.js";
 import { buildSnapshotContent } from "../services/publishing.js";
+import { createSnapshot, pruneOldSnapshots } from "../services/dbSnapshot.js";
 import { v4 as uuid } from "uuid";
 
 async function runPublishingCycle() {
@@ -29,4 +30,15 @@ cron.schedule("0 2 * * *", async () => {
   await runEscalations();
   await notifyOverdueTasks();
   await runPublishingCycle();
+});
+
+// Weekly full-database snapshot (Sunday 03:00) — kept as an independent
+// registration so a failure here doesn't affect the daily job above.
+cron.schedule("0 3 * * 0", async () => {
+  try {
+    await createSnapshot("weekly");
+    await pruneOldSnapshots();
+  } catch (err) {
+    console.error("[scheduler] weekly snapshot failed:", err);
+  }
 });

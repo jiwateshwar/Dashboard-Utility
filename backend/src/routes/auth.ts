@@ -1,8 +1,24 @@
 import { Router } from "express";
 import { query } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { env } from "../utils/env.js";
+import { buildLoginRedirect, exchangeCode } from "../services/entra.js";
 
 const router = Router();
+
+// ── Shared helpers ──────────────────────────────────────────────
+
+async function notifyAdminsOfSignupRequest(name: string, email: string) {
+  const admins = await query(
+    `SELECT id FROM users WHERE role::text IN ('Admin', 'SuperAdmin') AND is_active = true`
+  );
+  for (const admin of admins.rows) {
+    await query(
+      `INSERT INTO notifications (id, user_id, message) VALUES (gen_random_uuid(), $1, $2)`,
+      [admin.id, `New signup request from ${name} (${email})`]
+    );
+  }
+}
 
 router.post("/login", async (req, res) => {
   const { email } = req.body as { email?: string };
@@ -44,11 +60,123 @@ router.post("/verify", async (req, res) => {
   // Record login event for access logs
   await query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [userId]);
   await query(
-    `INSERT INTO login_history (user_id, ip_address, user_agent) VALUES ($1, $2, $3)`,
+    `INSERT INTO login_history (user_id, ip_address, user_agent, method) VALUES ($1, $2, $3, 'otp')`,
     [userId, req.ip ?? null, req.headers["user-agent"] ?? null]
   );
 
   res.json({ message: "Authenticated" });
+});
+
+// ── Entra ID (Azure AD) SSO ──────────────────────────────────────
+
+router.get("/entra/login", async (req, res) => {
+  if (!env.entra.enabled) {
+    return res.status(501).json({ error: "SSO is not configured" });
+  }
+  try {
+    const { url, authState } = await buildLoginRedirect();
+    req.session.entraAuth = authState;
+    req.session.save((err) => {
+      if (err) {
+        console.error("[entra] failed to save session before redirect:", err);
+        return res.status(500).json({ error: "Failed to start SSO login" });
+      }
+      res.redirect(url);
+    });
+  } catch (err) {
+    console.error("[entra] login redirect failed:", err);
+    res.status(500).json({ error: "Failed to start SSO login" });
+  }
+});
+
+router.get("/entra/callback", async (req, res) => {
+  const failureRedirect = (code: string) => res.redirect(`${env.corsOrigin}/?ssoError=${code}`);
+
+  if (!env.entra.enabled) return failureRedirect("not_configured");
+
+  const authState = req.session.entraAuth;
+  if (!authState || Date.now() - authState.createdAt > 10 * 60 * 1000) {
+    return failureRedirect("expired");
+  }
+  req.session.entraAuth = undefined;
+
+  let claims;
+  try {
+    const currentUrl = new URL(req.originalUrl, `${req.protocol}://${req.get("host")}`);
+    claims = await exchangeCode(currentUrl, authState);
+  } catch (err) {
+    console.error("[entra] code exchange failed:", err);
+    return failureRedirect("failed");
+  }
+
+  const tenantId = claims.tid;
+  const oid = claims.oid;
+  const email = (claims.email || claims.preferred_username || claims.upn || "").toLowerCase();
+  const name = claims.name || email;
+
+  if (!tenantId || !oid) return failureRedirect("failed");
+  if (tenantId !== env.entra.tenantId) return failureRedirect("wrong_tenant");
+  if (!email) return failureRedirect("failed");
+
+  async function completeLogin(userId: string) {
+    req.session.userId = userId;
+    await query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [userId]);
+    await query(
+      `INSERT INTO login_history (user_id, ip_address, user_agent, method) VALUES ($1, $2, $3, 'sso')`,
+      [userId, req.ip ?? null, req.headers["user-agent"] ?? null]
+    );
+  }
+
+  // 1) Already linked to this Entra identity?
+  const linked = await query(
+    `SELECT u.id, u.is_active FROM sso_identities si
+     JOIN users u ON u.id = si.user_id
+     WHERE si.provider = 'entra' AND si.tenant_id = $1 AND si.oid = $2`,
+    [tenantId, oid]
+  );
+  if (linked.rows.length > 0) {
+    const u = linked.rows[0];
+    if (!u.is_active) return failureRedirect("account_disabled");
+    await query(
+      `UPDATE sso_identities SET last_login_at = now() WHERE provider = 'entra' AND tenant_id = $1 AND oid = $2`,
+      [tenantId, oid]
+    );
+    await completeLogin(u.id);
+    return res.redirect(env.corsOrigin);
+  }
+
+  // 2) No identity link yet — try to auto-link by exact email match.
+  const byEmail = await query(`SELECT id, is_active FROM users WHERE lower(email) = $1`, [email]);
+  if (byEmail.rows.length > 0) {
+    const u = byEmail.rows[0];
+    if (!u.is_active) return failureRedirect("account_disabled");
+
+    const alreadyLinked = await query(`SELECT 1 FROM sso_identities WHERE user_id = $1`, [u.id]);
+    if (alreadyLinked.rows.length > 0) return failureRedirect("already_linked");
+
+    await query(
+      `INSERT INTO sso_identities (user_id, provider, tenant_id, oid, email_at_link)
+       VALUES ($1, 'entra', $2, $3, $4)
+       ON CONFLICT (provider, tenant_id, oid) DO NOTHING`,
+      [u.id, tenantId, oid, email]
+    );
+    await completeLogin(u.id);
+    return res.redirect(env.corsOrigin);
+  }
+
+  // 3) No matching account at all — route into the existing signup-request approval flow.
+  const pending = await query(
+    `SELECT id FROM signup_requests WHERE sso_oid = $1 AND status = 'Pending'`, [oid]
+  );
+  if (pending.rows.length === 0) {
+    await query(
+      `INSERT INTO signup_requests (name, email, manager_id, sso_provider, sso_tenant_id, sso_oid)
+       VALUES ($1, $2, NULL, 'entra', $3, $4)`,
+      [name, email, tenantId, oid]
+    );
+    await notifyAdminsOfSignupRequest(name, email);
+  }
+  res.redirect(`${env.corsOrigin}/?sso=pending`);
 });
 
 // Authenticated: update own employee ID
@@ -96,16 +224,7 @@ router.post("/signup", async (req, res) => {
     [name, email, manager_id]
   );
 
-  // Notify all active admins
-  const admins = await query(
-    `SELECT id FROM users WHERE role::text IN ('Admin', 'SuperAdmin') AND is_active = true`
-  );
-  for (const admin of admins.rows) {
-    await query(
-      `INSERT INTO notifications (id, user_id, message) VALUES (gen_random_uuid(), $1, $2)`,
-      [admin.id, `New signup request from ${name} (${email})`]
-    );
-  }
+  await notifyAdminsOfSignupRequest(name, email);
 
   res.json({ message: "Request submitted. An admin will review your request." });
 });
@@ -122,7 +241,9 @@ router.get("/stats", async (_req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   const { rows } = await query(
-    `SELECT id, name, email, manager_id, level, role, is_active, employee_id FROM users WHERE id = $1`,
+    `SELECT id, name, email, manager_id, level, role, is_active, employee_id,
+       EXISTS(SELECT 1 FROM sso_identities WHERE user_id = users.id) AS sso_linked
+     FROM users WHERE id = $1`,
     [req.session.userId]
   );
   res.json(rows[0]);
