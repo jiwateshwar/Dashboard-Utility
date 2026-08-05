@@ -20,7 +20,7 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://prism:prism@db:5432/prism
       SESSION_SECRET: prism_dev_secret
-      CORS_ORIGIN: https://prism.theshabd.org
+      CORS_ORIGIN: https://172.25.47.101
       ENTRA_TENANT_ID: ""
       ENTRA_CLIENT_ID: ""
       ENTRA_CLIENT_SECRET: ""
