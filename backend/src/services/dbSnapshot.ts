@@ -145,9 +145,19 @@ async function writeSnapshotFile(filePath: string, payload: SnapshotFile) {
   return gz.length;
 }
 
+/** Gzip files start with the magic bytes 0x1f 0x8b. */
+function isGzip(buf: Buffer): boolean {
+  return buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+}
+
 async function readSnapshotFile(filePath: string): Promise<SnapshotFile> {
   const raw = await fs.readFile(filePath);
-  return JSON.parse(zlib.gunzipSync(raw).toString("utf8"));
+  // Snapshots we generate ourselves are always gzipped, but an uploaded
+  // import may have been decompressed in transit (antivirus, browser
+  // download handling, someone manually "extracting" the .gz before
+  // re-uploading) — tolerate plain JSON too rather than hard-failing.
+  const jsonText = isGzip(raw) ? zlib.gunzipSync(raw).toString("utf8") : raw.toString("utf8");
+  return JSON.parse(jsonText);
 }
 
 export async function createSnapshot(triggerType: string, userId?: string): Promise<string> {
@@ -224,22 +234,24 @@ export async function registerImportedSnapshot(fileBuffer: Buffer, userId: strin
   try {
     ({ manifest } = await readSnapshotFile(filePath));
   } catch (err: any) {
+    const error = `Not a valid PRISM backup file: ${String(err?.message ?? err)}`;
     await query(`UPDATE db_snapshots SET status = 'failed', error_message = $2, file_path = $3 WHERE id = $1`, [
       id,
-      `Not a valid PRISM backup file: ${String(err?.message ?? err)}`,
+      error,
       filePath
     ]);
-    return { id, compatible: false, missing: [] as string[] };
+    return { id, compatible: false, missing: [] as string[], error };
   }
 
   const compat = await checkSchemaCompatibility(manifest.schemaMigrations);
   if (!compat.compatible) {
+    const error = `Missing migrations on this host: ${compat.missing.join(", ")}`;
     await query(`UPDATE db_snapshots SET status = 'failed', error_message = $2, file_path = $3 WHERE id = $1`, [
       id,
-      `Missing migrations on this host: ${compat.missing.join(", ")}`,
+      error,
       filePath
     ]);
-    return { id, compatible: false, missing: compat.missing };
+    return { id, compatible: false, missing: compat.missing, error };
   }
 
   await query(`UPDATE db_snapshots SET status = 'complete', file_path = $2, size_bytes = $3 WHERE id = $1`, [
@@ -247,7 +259,7 @@ export async function registerImportedSnapshot(fileBuffer: Buffer, userId: strin
     filePath,
     fileBuffer.length
   ]);
-  return { id, compatible: true, missing: [] as string[] };
+  return { id, compatible: true, missing: [] as string[], error: null as string | null };
 }
 
 export async function checkSchemaCompatibility(schemaMigrations: string[]) {

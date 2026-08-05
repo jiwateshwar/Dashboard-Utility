@@ -73,9 +73,7 @@ router.post("/import", upload.single("file"), async (req, res) => {
   try {
     const registered = await registerImportedSnapshot(req.file.buffer, req.session.userId!);
     if (!registered.compatible) {
-      return res.status(409).json({
-        error: `This backup requires migration(s) not present on this server: ${registered.missing.join(", ")}. Update PRISM first.`
-      });
+      return res.status(409).json({ error: registered.error || "Import failed" });
     }
     await restoreSnapshot(registered.id, req.session.userId!);
     res.json({ ok: true, forceLogout: true });
