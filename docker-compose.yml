@@ -42,14 +42,17 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        TLS_CN: 172.25.47.101
     restart: unless-stopped
     ports:
       - "5173:80"
+    volumes:
+      # Self-signed TLS cert/key, provisioned onto this volume outside of
+      # Git (see frontend/certs/README.md) — not baked into the image.
+      - frontend_certs:/etc/nginx/certs:ro
     depends_on:
       - backend
 
 volumes:
   prism_db:
   prism_snapshots:
+  frontend_certs:

@@ -1,0 +1,10 @@
+# TLS cert/key — self-signed, provisioned onto a Docker volume outside Git.
+# See frontend/certs/README.md.
+frontend/certs/*.pem
+
+# Standard Node/build artifacts (not currently all excluded — see note in
+# conversation about node_modules already being tracked from an earlier commit)
+node_modules/
+dist/
+.env
+.env.local
