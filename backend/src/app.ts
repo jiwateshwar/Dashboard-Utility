@@ -49,7 +49,9 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      // Safe to require HTTPS-only cookies: nginx terminates TLS and sends
+      // X-Forwarded-Proto, which Express trusts via `trust proxy` above.
+      secure: process.env.NODE_ENV === "production",
       maxAge: 1000 * 60 * 60 * 24 * 7
     }
   })

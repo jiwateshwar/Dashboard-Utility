@@ -20,11 +20,14 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://prism:prism@db:5432/prism
       SESSION_SECRET: prism_dev_secret
-      CORS_ORIGIN: https://172.25.47.101
+      CORS_ORIGIN: https://172.25.47.101:5173
       ENTRA_TENANT_ID: ""
       ENTRA_CLIENT_ID: ""
       ENTRA_CLIENT_SECRET: ""
-      ENTRA_REDIRECT_URI: ""
+      # Pre-staged for when Entra ID is configured — register this exact URL
+      # as the redirect URI in the Azure App Registration. SSO stays disabled
+      # until ENTRA_TENANT_ID/CLIENT_ID/CLIENT_SECRET are also filled in.
+      ENTRA_REDIRECT_URI: https://172.25.47.101:5173/api/auth/entra/callback
       SNAPSHOT_DIR: /app/data/snapshots
       SNAPSHOT_RETENTION_WEEKLY: 12
       SNAPSHOT_RETENTION_SAFETY: 5
@@ -39,6 +42,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        TLS_CN: 172.25.47.101
     restart: unless-stopped
     ports:
       - "5173:80"
