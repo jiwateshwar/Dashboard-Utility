@@ -315,11 +315,24 @@ export async function restoreSnapshot(snapshotId: string, actingUserId: string) 
   // Every session, including the one that triggered this, is now dangling.
   await query(`TRUNCATE session`);
   await query(`UPDATE db_snapshots SET restored_from_id = $2 WHERE id = $1`, [safetySnapshotId, snapshotId]);
-  await query(
-    `INSERT INTO audit_log (id, entity_type, entity_id, changed_by, old_value, new_value)
-     VALUES (gen_random_uuid(), 'db_snapshot', $1, $2, NULL, $3)`,
-    [snapshotId, actingUserId, JSON.stringify({ action: "restore", safetySnapshotId })]
-  );
+
+  // Best-effort only: the restore above has already committed successfully,
+  // so a failure here must never surface as "the restore failed" to the
+  // caller. It's a real failure mode too, not just theoretical — actingUserId
+  // is whoever's session triggered this, captured before the restore; if the
+  // snapshot being restored doesn't contain that same user id (a different
+  // backup, an older one, one from before this user existed), audit_log's
+  // FK on changed_by rejects the insert even though the data restore itself
+  // is already done and irreversible at this point.
+  try {
+    await query(
+      `INSERT INTO audit_log (id, entity_type, entity_id, changed_by, old_value, new_value)
+       VALUES (gen_random_uuid(), 'db_snapshot', $1, $2, NULL, $3)`,
+      [snapshotId, actingUserId, JSON.stringify({ action: "restore", safetySnapshotId })]
+    );
+  } catch (err: any) {
+    console.error("[dbSnapshot] restore succeeded but failed to write its audit_log entry:", err?.message ?? err);
+  }
 }
 
 /** Keeps the newest N snapshots per trigger-type bucket, deletes the rest (file + row). */
