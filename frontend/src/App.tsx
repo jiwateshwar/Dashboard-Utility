@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { api } from "./api";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { api, ApiError } from "./api";
 import LoginPage from "./pages/LoginPage";
 import DashboardsPage from "./pages/DashboardsPage";
 import DashboardDetailPage from "./pages/DashboardDetailPage";
@@ -17,6 +17,7 @@ import FeedbackPage from "./pages/FeedbackPage";
 import AccessLogPage from "./pages/AccessLogPage";
 import ProfilePage from "./pages/ProfilePage";
 import SystemBackupsPage from "./pages/SystemBackupsPage";
+import SsoSettingsPage from "./pages/SsoSettingsPage";
 import Sidebar from "./components/Sidebar";
 
 export type User = {
@@ -32,14 +33,22 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeSessions, setActiveSessions] = useState<{ id: string; name: string; email: string }[]>([]);
   const [showSessions, setShowSessions] = useState(false);
-  const location = useLocation();
 
   useEffect(() => {
     api("/auth/me")
       .then((data) => setUser(data))
-      .catch(() => setUser(null))
+      // Only a real 401 means "you're logged out" — a 403, a rate limit, a
+      // transient network/server error, etc. shouldn't clear a valid session
+      // just because this particular request happened to fail.
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) setUser(null);
+      })
       .finally(() => setLoading(false));
-  }, [location.pathname]);
+    // Runs once on load, not on every navigation — session validity doesn't
+    // need to be re-derived from the server on every route change, and doing
+    // so only multiplies the odds of a transient failure looking like a logout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
 
@@ -139,6 +148,7 @@ export default function App() {
             <Route path="/feedback" element={<FeedbackPage user={user} />} />
             <Route path="/access-logs" element={<AccessLogPage />} />
             <Route path="/system-backups" element={<SystemBackupsPage />} />
+            <Route path="/sso-settings" element={<SsoSettingsPage />} />
             <Route path="/profile" element={<ProfilePage user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

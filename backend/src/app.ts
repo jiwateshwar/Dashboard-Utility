@@ -46,6 +46,10 @@ app.use(
     secret: env.sessionSecret,
     resave: false,
     saveUninitialized: false,
+    // Extend the session on activity instead of a fixed expiry from login —
+    // otherwise an active user's session can lapse mid-use on whatever page
+    // they happen to be on, which looks like "this page logged me out".
+    rolling: true,
     cookie: {
       httpOnly: true,
       sameSite: "lax",

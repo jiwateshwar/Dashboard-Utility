@@ -13,7 +13,7 @@ services:
       - prism_db:/var/lib/postgresql/data
 
   backend:
-    build: ./backend
+    image: dashboard-utility-backend:latest
     restart: unless-stopped
     stop_grace_period: 30s
     environment:
@@ -21,14 +21,12 @@ services:
       DATABASE_URL: postgres://prism:prism@db:5432/prism
       SESSION_SECRET: prism_dev_secret
       CORS_ORIGIN: https://172.25.47.101:5173
-      # Entra ID (Azure AD) SSO is configured from the app itself now — log in
-      # as a SuperAdmin and open "SSO Settings" to set the tenant/client
-      # ID/secret, test the connection, and go live. These env vars only seed
-      # the very first run (when no config has been saved yet); after that,
-      # the database is the source of truth and these are ignored.
       ENTRA_TENANT_ID: ""
       ENTRA_CLIENT_ID: ""
       ENTRA_CLIENT_SECRET: ""
+      # Pre-staged for when Entra ID is configured — register this exact URL
+      # as the redirect URI in the Azure App Registration. SSO stays disabled
+      # until ENTRA_TENANT_ID/CLIENT_ID/CLIENT_SECRET are also filled in.
       ENTRA_REDIRECT_URI: https://172.25.47.101:5173/api/auth/entra/callback
       SNAPSHOT_DIR: /app/data/snapshots
       SNAPSHOT_RETENTION_WEEKLY: 12
@@ -42,8 +40,7 @@ services:
       - db
 
   frontend:
-    build:
-      context: ./frontend
+    image: dashboard-utility-frontend:latest
     restart: unless-stopped
     ports:
       - "5173:80"

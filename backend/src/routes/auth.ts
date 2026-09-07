@@ -3,6 +3,7 @@ import { query } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { env } from "../utils/env.js";
 import { buildLoginRedirect, exchangeCode } from "../services/entra.js";
+import { getSsoSettings, isSsoEnabled } from "../services/ssoSettings.js";
 
 const router = Router();
 
@@ -70,7 +71,7 @@ router.post("/verify", async (req, res) => {
 // ── Entra ID (Azure AD) SSO ──────────────────────────────────────
 
 router.get("/entra/login", async (req, res) => {
-  if (!env.entra.enabled) {
+  if (!(await isSsoEnabled())) {
     return res.status(501).json({ error: "SSO is not configured" });
   }
   try {
@@ -92,7 +93,10 @@ router.get("/entra/login", async (req, res) => {
 router.get("/entra/callback", async (req, res) => {
   const failureRedirect = (code: string) => res.redirect(`${env.corsOrigin}/?ssoError=${code}`);
 
-  if (!env.entra.enabled) return failureRedirect("not_configured");
+  const settings = await getSsoSettings();
+  if (!(settings.enabled && settings.tenantId && settings.clientId && settings.clientSecret && settings.redirectUri)) {
+    return failureRedirect("not_configured");
+  }
 
   const authState = req.session.entraAuth;
   if (!authState || Date.now() - authState.createdAt > 10 * 60 * 1000) {
@@ -115,7 +119,7 @@ router.get("/entra/callback", async (req, res) => {
   const name = claims.name || email;
 
   if (!tenantId || !oid) return failureRedirect("failed");
-  if (tenantId !== env.entra.tenantId) return failureRedirect("wrong_tenant");
+  if (tenantId !== settings.tenantId) return failureRedirect("wrong_tenant");
   if (!email) return failureRedirect("failed");
 
   async function completeLogin(userId: string) {
@@ -236,7 +240,7 @@ router.get("/stats", async (_req, res) => {
        (SELECT COUNT(*)::int FROM dashboards WHERE is_active = true) AS dashboards,
        (SELECT COUNT(*)::int FROM tasks   WHERE is_archived = false) AS tasks`
   );
-  res.json(rows[0]);
+  res.json({ ...rows[0], sso_enabled: await isSsoEnabled() });
 });
 
 router.get("/me", requireAuth, async (req, res) => {

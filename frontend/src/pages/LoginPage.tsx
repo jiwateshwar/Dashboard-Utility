@@ -17,7 +17,7 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<{ users: number; dashboards: number; tasks: number } | null>(null);
+  const [stats, setStats] = useState<{ users: number; dashboards: number; tasks: number; sso_enabled?: boolean } | null>(null);
 
   const [signup, setSignup] = useState({ name: "", email: "", manager_id: "" });
   const [managers, setManagers] = useState<{ id: string; name: string }[]>([]);
@@ -182,25 +182,29 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
                 Continue
               </button>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0" }}>
-                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-                <span style={{ fontSize: 12, color: "var(--muted)" }}>or</span>
-                <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-              </div>
+              {stats?.sso_enabled && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "20px 0" }}>
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                    <span style={{ fontSize: 12, color: "var(--muted)" }}>or</span>
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  </div>
 
-              <button
-                className="button secondary"
-                style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-                onClick={handleMicrosoftSignIn}
-              >
-                <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true">
-                  <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-                  <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-                  <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-                  <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-                </svg>
-                Sign in with Microsoft
-              </button>
+                  <button
+                    className="button secondary"
+                    style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                    onClick={handleMicrosoftSignIn}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 21 21" aria-hidden="true">
+                      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                    </svg>
+                    Sign in with Microsoft
+                  </button>
+                </>
+              )}
 
               <div style={{ marginTop: 20, textAlign: "center" }}>
                 <button
