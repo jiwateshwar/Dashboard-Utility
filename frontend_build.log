@@ -1,0 +1,65 @@
+{"stream":"Step 1/12 : FROM node:20-alpine AS build"}
+{"stream":"\n"}
+{"stream":" ---\u003e 737f4000d1c8\n"}
+{"stream":"Step 2/12 : ARG VITE_API_URL"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 7efff4d10b9b\n"}
+{"stream":" ---\u003e Removed intermediate container 7efff4d10b9b\n"}
+{"stream":" ---\u003e 49865a51ab38\n"}
+{"stream":"Step 3/12 : ENV VITE_API_URL=$VITE_API_URL"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 012b4cd2243b\n"}
+{"stream":" ---\u003e Removed intermediate container 012b4cd2243b\n"}
+{"stream":" ---\u003e 05248a727d08\n"}
+{"stream":"Step 4/12 : WORKDIR /app"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in ee2a1ab89391\n"}
+{"stream":" ---\u003e Removed intermediate container ee2a1ab89391\n"}
+{"stream":" ---\u003e a211d2d73b18\n"}
+{"stream":"Step 5/12 : COPY package.json package-lock.json* ./"}
+{"stream":"\n"}
+{"stream":" ---\u003e c810cefb5d11\n"}
+{"stream":"Step 6/12 : RUN npm install"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 355e6d5b2c8a\n"}
+{"stream":"\nadded 71 packages, and audited 72 packages in 4s\n"}
+{"stream":"\n7 packages are looking for funding\n  run `npm fund` for details\n"}
+{"stream":"\n9 vulnerabilities (1 low, 4 moderate, 4 high)\n\nTo address issues that do not require attention, run:\n  npm audit fix\n\nTo address all issues (including breaking changes), run:\n  npm audit fix --force\n\nRun `npm audit` for details.\n"}
+{"stream":"\u001b[91mnpm notice\nnpm notice New major version of npm available! 10.8.2 -\u003e 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n\u001b[0m"}
+{"stream":" ---\u003e Removed intermediate container 355e6d5b2c8a\n"}
+{"stream":" ---\u003e ed198e7b4e54\n"}
+{"stream":"Step 7/12 : COPY . ."}
+{"stream":"\n"}
+{"stream":" ---\u003e b2d57078d25b\n"}
+{"stream":"Step 8/12 : RUN npm run build"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 1005e62351bf\n"}
+{"stream":"\n\u003e prism-frontend@Beta 07.09.06 build\n\u003e tsc \u0026\u0026 vite build\n\n"}
+{"stream":"vite v5.4.21 building for production...\n"}
+{"stream":"transforming...\n"}
+{"stream":"✓ 59 modules transformed.\n"}
+{"stream":"rendering chunks...\n"}
+{"stream":"computing gzip size...\n"}
+{"stream":"dist/index.html                   0.40 kB │ gzip:  0.27 kB\n"}
+{"stream":"dist/assets/index-cAndZSoA.css    4.92 kB │ gzip:  1.59 kB\ndist/assets/index-KcsjKgZv.js   348.23 kB │ gzip: 87.28 kB\n"}
+{"stream":"✓ built in 1.97s\n"}
+{"stream":" ---\u003e Removed intermediate container 1005e62351bf\n"}
+{"stream":" ---\u003e f6040195616a\n"}
+{"aux":{"ID":"sha256:f6040195616aea1f2646de05bb391774e72c2e9e491f581bbb409cfc98ab771f"}}
+{"stream":"Step 9/12 : FROM nginx:alpine"}
+{"stream":"\n"}
+{"stream":" ---\u003e 21bb1a3a67e9\n"}
+{"stream":"Step 10/12 : COPY --from=build /app/dist /usr/share/nginx/html"}
+{"stream":"\n"}
+{"stream":" ---\u003e 4cf5e2ec68ef\n"}
+{"stream":"Step 11/12 : COPY nginx.conf /etc/nginx/conf.d/default.conf"}
+{"stream":"\n"}
+{"stream":" ---\u003e 942c2d9c6ebd\n"}
+{"stream":"Step 12/12 : EXPOSE 80"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in bbf88fc4c55d\n"}
+{"stream":" ---\u003e Removed intermediate container bbf88fc4c55d\n"}
+{"stream":" ---\u003e cf54e3e8d5f6\n"}
+{"aux":{"ID":"sha256:cf54e3e8d5f6ae5e5e3c5a3b02bba37cf5564935a957b3e3242d27846809480f"}}
+{"stream":"Successfully built cf54e3e8d5f6\n"}
+{"stream":"Successfully tagged dashboard-utility-frontend:latest\n"}

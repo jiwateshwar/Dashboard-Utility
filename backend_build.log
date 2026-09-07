@@ -1,0 +1,81 @@
+{"stream":"Step 1/17 : FROM node:20-alpine AS build"}
+{"stream":"\n"}
+{"stream":" ---\u003e 737f4000d1c8\n"}
+{"stream":"Step 2/17 : WORKDIR /app"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 781c7e986d33\n"}
+{"stream":"Step 3/17 : COPY package.json package-lock.json* ./"}
+{"stream":"\n"}
+{"stream":" ---\u003e 3a44883235cf\n"}
+{"stream":"Step 4/17 : RUN npm install"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in b1d99675c9b8\n"}
+{"stream":"\nadded 145 packages, and audited 146 packages in 3s\n\n"}
+{"stream":"27 packages are looking for funding\n  run `npm fund` for details\n"}
+{"stream":"\n7 vulnerabilities (2 low, 4 moderate, 1 high)\n\nTo address issues that do not require attention, run:\n  npm audit fix\n\nTo address all issues (including breaking changes), run:\n  npm audit fix --force\n\nRun `npm audit` for details.\n"}
+{"stream":"\u001b[91mnpm notice\nnpm notice New major version of npm available! 10.8.2 -\u003e 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n\u001b[0m"}
+{"stream":" ---\u003e Removed intermediate container b1d99675c9b8\n"}
+{"stream":" ---\u003e 8fa5e99af4bc\n"}
+{"stream":"Step 5/17 : COPY . ."}
+{"stream":"\n"}
+{"stream":" ---\u003e ee4d57dd0a97\n"}
+{"stream":"Step 6/17 : RUN npm run build"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in bc9cb921ecb0\n"}
+{"stream":"\n\u003e prism-backend@Beta 2026.03.23 build\n\u003e tsc\n\n"}
+{"stream":" ---\u003e Removed intermediate container bc9cb921ecb0\n"}
+{"stream":" ---\u003e 78b14b0899f1\n"}
+{"aux":{"ID":"sha256:78b14b0899f1f094f7277c4f947c9cb4e0f9c0236dab0823c19dbdd2fa39bd2f"}}
+{"stream":"Step 7/17 : FROM node:20-alpine"}
+{"stream":"\n"}
+{"stream":" ---\u003e 737f4000d1c8\n"}
+{"stream":"Step 8/17 : WORKDIR /app"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 781c7e986d33\n"}
+{"stream":"Step 9/17 : ENV NODE_ENV=production"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 617da3ea33fa\n"}
+{"stream":" ---\u003e Removed intermediate container 617da3ea33fa\n"}
+{"stream":" ---\u003e 80ecf1178d86\n"}
+{"stream":"Step 10/17 : COPY package.json package-lock.json* ./"}
+{"stream":"\n"}
+{"stream":" ---\u003e c8809ebfcbc4\n"}
+{"stream":"Step 11/17 : RUN npm install --omit=dev"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in d6fc67548444\n"}
+{"stream":"\nadded 117 packages, and audited 118 packages in 2s\n"}
+{"stream":"\n"}
+{"stream":"25 packages are looking for funding\n  run `npm fund` for details\n"}
+{"stream":"\n6 vulnerabilities (1 low, 4 moderate, 1 high)\n\nTo address issues that do not require attention, run:\n  npm audit fix\n\nTo address all issues (including breaking changes), run:\n  npm audit fix --force\n\nRun `npm audit` for details.\n"}
+{"stream":"\u001b[91mnpm notice\nnpm notice New major version of npm available! 10.8.2 -\u003e 12.0.2\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.2\nnpm notice To update run: npm install -g npm@12.0.2\nnpm notice\n\u001b[0m"}
+{"stream":" ---\u003e Removed intermediate container d6fc67548444\n"}
+{"stream":" ---\u003e 49f4f26009d4\n"}
+{"stream":"Step 12/17 : COPY --from=build /app/dist ./dist"}
+{"stream":"\n"}
+{"stream":" ---\u003e d5ec4a9f0425\n"}
+{"stream":"Step 13/17 : COPY --from=build /app/migrations ./migrations"}
+{"stream":"\n"}
+{"stream":" ---\u003e edf86984e2b3\n"}
+{"stream":"Step 14/17 : COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh"}
+{"stream":"\n"}
+{"stream":" ---\u003e 9d6ed77bbb19\n"}
+{"stream":"Step 15/17 : RUN chmod +x ./docker-entrypoint.sh"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in f9a59a0002d8\n"}
+{"stream":" ---\u003e Removed intermediate container f9a59a0002d8\n"}
+{"stream":" ---\u003e 860540230da2\n"}
+{"stream":"Step 16/17 : EXPOSE 4000"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in c930530657b9\n"}
+{"stream":" ---\u003e Removed intermediate container c930530657b9\n"}
+{"stream":" ---\u003e 4eafdf9593df\n"}
+{"stream":"Step 17/17 : CMD [\"./docker-entrypoint.sh\"]"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in dd3af9e2e96c\n"}
+{"stream":" ---\u003e Removed intermediate container dd3af9e2e96c\n"}
+{"stream":" ---\u003e 4404368cb864\n"}
+{"aux":{"ID":"sha256:4404368cb8646f2b19e931d407ecb88485a4ddd510fe234200650a07850ce8f7"}}
+{"stream":"Successfully built 4404368cb864\n"}
+{"stream":"Successfully tagged dashboard-utility-backend:latest\n"}

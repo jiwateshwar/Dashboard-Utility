@@ -1,0 +1,73 @@
+{"stream":"Step 1/17 : FROM node:20-alpine AS build"}
+{"stream":"\n"}
+{"stream":" ---\u003e 737f4000d1c8\n"}
+{"stream":"Step 2/17 : WORKDIR /app"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 781c7e986d33\n"}
+{"stream":"Step 3/17 : COPY package.json package-lock.json* ./"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 3a44883235cf\n"}
+{"stream":"Step 4/17 : RUN npm install"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 8fa5e99af4bc\n"}
+{"stream":"Step 5/17 : COPY . ."}
+{"stream":"\n"}
+{"stream":" ---\u003e 8926ec6b6297\n"}
+{"stream":"Step 6/17 : RUN npm run build"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 0be3c0740d6a\n"}
+{"stream":"\n\u003e prism-backend@Beta 2026.03.23 build\n\u003e tsc\n\n"}
+{"stream":" ---\u003e Removed intermediate container 0be3c0740d6a\n"}
+{"stream":" ---\u003e 2c5a7d3a9ef7\n"}
+{"aux":{"ID":"sha256:2c5a7d3a9ef735e47b9079ca2b077f65418fdefa4e99fb2a3e6c6fac81f0ad0e"}}
+{"stream":"Step 7/17 : FROM node:20-alpine"}
+{"stream":"\n"}
+{"stream":" ---\u003e 737f4000d1c8\n"}
+{"stream":"Step 8/17 : WORKDIR /app"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 781c7e986d33\n"}
+{"stream":"Step 9/17 : ENV NODE_ENV=production"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 80ecf1178d86\n"}
+{"stream":"Step 10/17 : COPY package.json package-lock.json* ./"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e c8809ebfcbc4\n"}
+{"stream":"Step 11/17 : RUN npm install --omit=dev"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 49f4f26009d4\n"}
+{"stream":"Step 12/17 : COPY --from=build /app/dist ./dist"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e d5ec4a9f0425\n"}
+{"stream":"Step 13/17 : COPY --from=build /app/migrations ./migrations"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e edf86984e2b3\n"}
+{"stream":"Step 14/17 : COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh"}
+{"stream":"\n"}
+{"stream":" ---\u003e 0d4338325c2f\n"}
+{"stream":"Step 15/17 : RUN chmod +x ./docker-entrypoint.sh"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 7f3747c33558\n"}
+{"stream":" ---\u003e Removed intermediate container 7f3747c33558\n"}
+{"stream":" ---\u003e 72602fdc0f6d\n"}
+{"stream":"Step 16/17 : EXPOSE 4000"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 6d59acdb2251\n"}
+{"stream":" ---\u003e Removed intermediate container 6d59acdb2251\n"}
+{"stream":" ---\u003e 94dce8f3f0a4\n"}
+{"stream":"Step 17/17 : CMD [\"./docker-entrypoint.sh\"]"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in deb48243cd52\n"}
+{"stream":" ---\u003e Removed intermediate container deb48243cd52\n"}
+{"stream":" ---\u003e f8f9b6b2f17e\n"}
+{"aux":{"ID":"sha256:f8f9b6b2f17e8b7ce4c3ea6fb95375fa7b81f4920c43890c8a82aed527755c38"}}
+{"stream":"Successfully built f8f9b6b2f17e\n"}
+{"stream":"Successfully tagged dashboard-utility-backend:latest\n"}
