@@ -26,6 +26,12 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  /* Unconditional backstop: whatever inner element (a table, a nowrap cell)
+     is wide enough to blow past its own container, the page itself must
+     never grow a horizontal scrollbar or let content bleed past the
+     viewport — any table too wide for its card should scroll inside that
+     card instead (see .card:has(table.table) below), never here. */
+  overflow-x: hidden;
 }
 
 a {
@@ -74,6 +80,14 @@ a {
   padding: 24px;
 }
 
+/* The actual .app-shell grid item — .main is nested a level inside this, not
+   a direct grid child, so min-width:0 has to live here to stop a wide-enough
+   descendant (e.g. a table with many columns) from stretching this whole
+   column past its 1fr share and blowing the page out past the viewport. */
+.app-content {
+  min-width: 0;
+}
+
 .header {
   height: 60px;
   display: flex;
@@ -103,6 +117,15 @@ a {
   padding: 20px;
   border: 1px solid var(--border);
   box-shadow: none;
+}
+
+/* Tables have no fixed width, so a card with enough columns/content (many
+   accounts, long titles, etc.) will otherwise blow past the page frame
+   instead of clipping — scroll it within the card instead. Scoped to cards
+   that actually hold a table so unrelated cards (dropdowns, popovers) keep
+   their normal overflow behavior. */
+.card:has(> table.table) {
+  overflow-x: auto;
 }
 
 .dashboard-shell {

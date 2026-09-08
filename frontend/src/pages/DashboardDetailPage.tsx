@@ -623,8 +623,9 @@ export default function DashboardDetailPage() {
                       <td>{acctName(t.account_id)}</td>
                       <td>{ownerNames(t)}</td>
                       <td>{ownerName(t.created_by)}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        {fmt(t.target_date)} <AgingChip targetDate={t.target_date} status={t.status} />
+                      <td>
+                        <div>{fmt(t.target_date)}</div>
+                        <AgingChip targetDate={t.target_date} status={t.status} />
                       </td>
                       <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
                       <td><HashtagChips tags={t.tags} /></td>

@@ -78,7 +78,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar user={user} />
-      <div>
+      <div className="app-content">
         <div className="header">
           <div>
             <div className="header-title">PRISM</div>

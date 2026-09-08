@@ -1,0 +1,60 @@
+{"stream":"Step 1/12 : FROM node:20-alpine AS build"}
+{"stream":"\n"}
+{"stream":" ---\u003e 737f4000d1c8\n"}
+{"stream":"Step 2/12 : ARG VITE_API_URL"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 49865a51ab38\n"}
+{"stream":"Step 3/12 : ENV VITE_API_URL=$VITE_API_URL"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 05248a727d08\n"}
+{"stream":"Step 4/12 : WORKDIR /app"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e a211d2d73b18\n"}
+{"stream":"Step 5/12 : COPY package.json package-lock.json* ./"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e c810cefb5d11\n"}
+{"stream":"Step 6/12 : RUN npm install"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e ed198e7b4e54\n"}
+{"stream":"Step 7/12 : COPY . ."}
+{"stream":"\n"}
+{"stream":" ---\u003e 42a230610d54\n"}
+{"stream":"Step 8/12 : RUN npm run build"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in 7048ff6b7cce\n"}
+{"stream":"\n\u003e prism-frontend@Beta 07.09.06 build\n\u003e tsc \u0026\u0026 vite build\n\n"}
+{"stream":"vite v5.4.21 building for production...\n"}
+{"stream":"transforming...\n"}
+{"stream":"✓ 59 modules transformed.\n"}
+{"stream":"rendering chunks...\n"}
+{"stream":"computing gzip size...\n"}
+{"stream":"dist/index.html                   0.40 kB │ gzip:  0.27 kB\n"}
+{"stream":"dist/assets/index-cAndZSoA.css    4.92 kB │ gzip:  1.59 kB\n"}
+{"stream":"dist/assets/index-KcsjKgZv.js   348.23 kB │ gzip: 87.28 kB\n"}
+{"stream":"✓ built in 1.98s\n"}
+{"stream":" ---\u003e Removed intermediate container 7048ff6b7cce\n"}
+{"stream":" ---\u003e 60485e20ffc9\n"}
+{"aux":{"ID":"sha256:60485e20ffc9b0314057732d67d05eaede7ed9cd180c0843cd5ade1ec823fdbe"}}
+{"stream":"Step 9/12 : FROM nginx:alpine"}
+{"stream":"\n"}
+{"stream":" ---\u003e 21bb1a3a67e9\n"}
+{"stream":"Step 10/12 : COPY --from=build /app/dist /usr/share/nginx/html"}
+{"stream":"\n"}
+{"stream":" ---\u003e Using cache\n"}
+{"stream":" ---\u003e 4cf5e2ec68ef\n"}
+{"stream":"Step 11/12 : COPY nginx.conf /etc/nginx/conf.d/default.conf"}
+{"stream":"\n"}
+{"stream":" ---\u003e 2226d7aca719\n"}
+{"stream":"Step 12/12 : EXPOSE 80"}
+{"stream":"\n"}
+{"stream":" ---\u003e Running in b554d3ca3df3\n"}
+{"stream":" ---\u003e Removed intermediate container b554d3ca3df3\n"}
+{"stream":" ---\u003e 0c476c6c6241\n"}
+{"aux":{"ID":"sha256:0c476c6c6241063ae22510df521ccaa8b6c74ca7823747781d7d10d9dc20d4f9"}}
+{"stream":"Successfully built 0c476c6c6241\n"}
+{"stream":"Successfully tagged dashboard-utility-frontend:latest\n"}

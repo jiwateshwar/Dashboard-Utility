@@ -255,7 +255,10 @@ export default function PersonalPage() {
                         <div>{t.item_details}</div>
                       </td>
                       <td>{acctName(t.account_id)}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>{fmt(t.target_date)} <AgingChip targetDate={t.target_date} status={t.status} /></td>
+                      <td>
+                        <div>{fmt(t.target_date)}</div>
+                        <AgingChip targetDate={t.target_date} status={t.status} />
+                      </td>
                       <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
                       <td><HashtagChips tags={t.tags} /></td>
                       <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
