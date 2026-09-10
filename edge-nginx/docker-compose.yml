@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Self-signed TLS cert/key, provisioned onto this volume outside of
+      # Git — not baked into the image. See certs/README.md.
+      - certs:/etc/nginx/certs:ro
+
+volumes:
+  certs:
