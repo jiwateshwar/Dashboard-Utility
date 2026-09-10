@@ -42,15 +42,25 @@ export type EntraAuthState = {
   createdAt: number;
 };
 
-export async function buildLoginRedirect(): Promise<{ url: string; authState: EntraAuthState }> {
-  const { cfg, settings } = await getConfig();
+// `redirectUri` is computed per-request by the caller (see auth.ts) from
+// whichever origin the user is actually on, not read from SsoSettings —
+// this app can be served from more than one origin at once (e.g. a raw IP
+// and a domain behind a reverse proxy), and OAuth requires the redirect_uri
+// sent here to be the one Microsoft actually redirects back to, which must
+// match the session cookie's origin or the callback loses its state. The
+// admin-configured `redirectUri` in SsoSettings is just the "is SSO
+// configured at all" signal and the one shown for Azure registration
+// guidance — every origin in CORS_ORIGIN needs its own redirect URI
+// registered in the Azure App Registration, not just that one.
+export async function buildLoginRedirect(redirectUri: string): Promise<{ url: string; authState: EntraAuthState }> {
+  const { cfg } = await getConfig();
   const state = client.randomState();
   const nonce = client.randomNonce();
   const codeVerifier = client.randomPKCECodeVerifier();
   const codeChallenge = await client.calculatePKCECodeChallenge(codeVerifier);
 
   const redirectTo = client.buildAuthorizationUrl(cfg, {
-    redirect_uri: settings.redirectUri!,
+    redirect_uri: redirectUri,
     scope: "openid profile email",
     state,
     nonce,

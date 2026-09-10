@@ -9,6 +9,7 @@ import {
   SsoSettings
 } from "../services/ssoSettings.js";
 import { testEntraConnection, invalidateEntraConfig } from "../services/entra.js";
+import { env } from "../utils/env.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -33,7 +34,12 @@ function toClient(settings: SsoSettings) {
     lastTestedAt: settings.lastTestedAt,
     lastTestOk: settings.lastTestOk,
     lastTestError: settings.lastTestError,
-    updatedAt: settings.updatedAt
+    updatedAt: settings.updatedAt,
+    // The redirect_uri actually used at login time is computed per-request
+    // from whichever of these origins the user is on (see auth.ts) — every
+    // one of them needs its own exact redirect URI registered in Azure, not
+    // just the single `redirectUri` value above.
+    allowedRedirectUris: env.corsOrigins.map((origin) => `${origin}/api/auth/entra/callback`)
   };
 }
 

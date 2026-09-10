@@ -9,6 +9,23 @@ const router = Router();
 
 // ── Shared helpers ──────────────────────────────────────────────
 
+/**
+ * The origin (scheme://host) the current request actually arrived on,
+ * validated against the configured CORS origins. This app can be served
+ * from more than one origin (raw IP, domain behind a reverse proxy) — the
+ * Entra ID redirect_uri must match whichever one the user is actually on,
+ * or the session cookie set during /entra/login won't be sent back on the
+ * callback (it lands on a different origin) and the flow looks "expired"
+ * even when it isn't. Validating against an allow-list (rather than
+ * trusting the Host header outright) stops that origin from being used to
+ * build a redirect_uri Microsoft would send an authorization code to
+ * anywhere we don't actually control.
+ */
+function currentOrigin(req: import("express").Request): string | null {
+  const origin = `${req.protocol}://${req.get("host")}`;
+  return env.corsOrigins.includes(origin) ? origin : null;
+}
+
 async function notifyAdminsOfSignupRequest(name: string, email: string) {
   const admins = await query(
     `SELECT id FROM users WHERE role::text IN ('Admin', 'SuperAdmin') AND is_active = true`
@@ -74,8 +91,13 @@ router.get("/entra/login", async (req, res) => {
   if (!(await isSsoEnabled())) {
     return res.status(501).json({ error: "SSO is not configured" });
   }
+  const origin = currentOrigin(req);
+  if (!origin) {
+    return res.status(400).json({ error: "Unrecognized origin" });
+  }
   try {
-    const { url, authState } = await buildLoginRedirect();
+    const redirectUri = `${origin}/api/auth/entra/callback`;
+    const { url, authState } = await buildLoginRedirect(redirectUri);
     req.session.entraAuth = authState;
     req.session.save((err) => {
       if (err) {
@@ -91,7 +113,12 @@ router.get("/entra/login", async (req, res) => {
 });
 
 router.get("/entra/callback", async (req, res) => {
-  const failureRedirect = (code: string) => res.redirect(`${env.corsOrigin}/?ssoError=${code}`);
+  // Always lands on the same origin the redirect_uri sent to Microsoft used
+  // (that's what a browser just navigated back to), so this is never the
+  // "wrong" origin to return the user to — falls back to the first
+  // configured origin only if the Host header is somehow unrecognized.
+  const returnOrigin = currentOrigin(req) ?? env.corsOrigins[0];
+  const failureRedirect = (code: string) => res.redirect(`${returnOrigin}/?ssoError=${code}`);
 
   const settings = await getSsoSettings();
   if (!(settings.enabled && settings.tenantId && settings.clientId && settings.clientSecret && settings.redirectUri)) {
@@ -146,7 +173,7 @@ router.get("/entra/callback", async (req, res) => {
       [tenantId, oid]
     );
     await completeLogin(u.id);
-    return res.redirect(env.corsOrigin);
+    return res.redirect(returnOrigin);
   }
 
   // 2) No identity link yet — try to auto-link by exact email match.
@@ -165,7 +192,7 @@ router.get("/entra/callback", async (req, res) => {
       [u.id, tenantId, oid, email]
     );
     await completeLogin(u.id);
-    return res.redirect(env.corsOrigin);
+    return res.redirect(returnOrigin);
   }
 
   // 3) No matching account at all — route into the existing signup-request approval flow.
@@ -180,7 +207,7 @@ router.get("/entra/callback", async (req, res) => {
     );
     await notifyAdminsOfSignupRequest(name, email);
   }
-  res.redirect(`${env.corsOrigin}/?sso=pending`);
+  res.redirect(`${returnOrigin}/?sso=pending`);
 });
 
 // Authenticated: update own employee ID

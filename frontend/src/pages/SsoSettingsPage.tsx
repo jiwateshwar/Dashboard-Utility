@@ -11,6 +11,7 @@ type SsoSettings = {
   lastTestOk: boolean | null;
   lastTestError: string | null;
   updatedAt: string | null;
+  allowedRedirectUris: string[];
 };
 
 const defaultRedirectUri = `${window.location.origin}/api/auth/entra/callback`;
@@ -173,9 +174,29 @@ export default function SsoSettingsPage() {
             style={{ marginBottom: 6, width: "100%", maxWidth: 480 }}
           />
           <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, maxWidth: 480 }}>
-            Register this exact URL as a redirect URI on the App Registration in Azure — it must match
-            character-for-character, including the protocol and port.
+            Just a record of one working redirect URI, kept for reference. The app is reachable from
+            multiple addresses (see below) and picks the matching redirect URI automatically based on
+            which one a user is actually on — it doesn't have to match this field exactly.
           </p>
+
+          {settings && settings.allowedRedirectUris.length > 0 && (
+            <div style={{ marginBottom: 12, maxWidth: 480 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
+                Register ALL of these as redirect URIs on the App Registration in Azure
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+                One per address this app is reachable from — sign-in only works from an address whose
+                exact redirect URI is registered.
+              </div>
+              <div className="card" style={{ padding: "8px 12px", background: "var(--bg, #f8f9fa)" }}>
+                {settings.allowedRedirectUris.map((uri) => (
+                  <div key={uri} style={{ fontFamily: "monospace", fontSize: 12, padding: "3px 0", wordBreak: "break-all" }}>
+                    {uri}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button className="button" onClick={handleSave} disabled={saving}>
             {saving ? "Saving…" : "Save"}

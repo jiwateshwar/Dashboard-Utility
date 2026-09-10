@@ -22,7 +22,7 @@ app.use(helmet());
 app.use(compression());
 app.use(
   cors({
-    origin: env.corsOrigin,
+    origin: env.corsOrigins,
     credentials: true
   })
 );

@@ -1,0 +1,7 @@
+# Shell scripts and Dockerfiles run inside Linux containers — a CRLF
+# checkout (common on Windows without this file) corrupts their shebang
+# line and makes `exec ./script.sh` fail with a confusing "not found"
+# inside the container. Force LF regardless of platform/autocrlf settings.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.conf text eol=lf

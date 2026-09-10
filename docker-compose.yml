@@ -20,7 +20,10 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://prism:prism@db:5432/prism
       SESSION_SECRET: prism_dev_secret
-      CORS_ORIGIN: https://172.25.47.101:5173
+      # Every address this app is reachable from, comma-separated — each one
+      # needs its own matching redirect URI registered in Azure too (see the
+      # SSO Settings page for the exact list once this is deployed).
+      CORS_ORIGIN: https://172.25.47.101:5173,https://prism.comviva.com
       # Entra ID (Azure AD) SSO is configured from the app itself now — log in
       # as a SuperAdmin and open "SSO Settings" to set the tenant/client
       # ID/secret, test the connection, and go live. These env vars only seed
