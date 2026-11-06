@@ -1,3 +1,4 @@
+import "./utils/asyncErrors.js";
 import express from "express";
 import session from "express-session";
 import pgSession from "connect-pg-simple";
@@ -71,6 +72,7 @@ app.get("/health", (_req, res) => {
 // and returns a JSON 500 instead of crashing the process.
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error("[unhandled error]", err);
+  if (res.headersSent) return;
   if (err.code === "23505") {
     return res.status(409).json({ error: "A record with that value already exists" });
   }

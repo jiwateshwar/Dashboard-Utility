@@ -51,14 +51,17 @@ router.get("/", async (req, res) => {
   }
 
   const { rows } = await query(
-    `SELECT DISTINCT l.*, u.name AS owner_name,
+    // EXISTS rather than JOIN + DISTINCT: Postgres can't DISTINCT a row that
+    // contains a json column ("could not identify an equality operator for type json").
+    `SELECT l.*, u.name AS owner_name,
        COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name))
                  FROM link_teams lt2 JOIN teams t ON t.id = lt2.team_id WHERE lt2.link_id = l.id), '[]') AS teams
      FROM links l
-     JOIN link_teams lt ON lt.link_id = l.id
-     JOIN team_members tm ON tm.team_id = lt.team_id
      JOIN users u ON u.id = l.owner_id
-     WHERE tm.user_id = $1 AND l.owner_id <> $1
+     WHERE l.owner_id <> $1
+       AND EXISTS (SELECT 1 FROM link_teams lt
+                   JOIN team_members tm ON tm.team_id = lt.team_id
+                   WHERE lt.link_id = l.id AND tm.user_id = $1)
      ORDER BY l.created_at DESC`,
     [userId]
   );
