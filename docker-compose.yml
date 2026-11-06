@@ -37,6 +37,16 @@ services:
       SNAPSHOT_RETENTION_WEEKLY: 12
       SNAPSHOT_RETENTION_SAFETY: 5
       SNAPSHOT_MAX_UPLOAD_MB: 500
+      # Email notifications are configured from the app (SuperAdmin → Email
+      # Settings). These only seed the first run; values come from the
+      # Portainer stack's environment variables — never put the password here.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      APP_BASE_URL: https://prism.comviva.com
+      NOTIFY_TZ: Asia/Kolkata
     ports:
       - "4000:4000"
     volumes:

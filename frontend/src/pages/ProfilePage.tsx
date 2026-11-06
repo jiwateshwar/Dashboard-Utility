@@ -1,6 +1,91 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { User } from "../App";
+
+type EmailCategoryPref = { key: string; label: string; description: string; mandatory: boolean; enabled: boolean };
+type EmailPrefs = { emailLive: boolean; email: string; digestOnly: boolean; categories: EmailCategoryPref[] };
+
+function EmailPreferencesCard() {
+  const [prefs, setPrefs] = useState<EmailPrefs | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    api("/email/preferences").then(setPrefs).catch(() => setPrefs(null));
+  }, []);
+
+  if (!prefs) return null;
+
+  function toggle(key: string) {
+    setMessage(null);
+    setPrefs((p) => p && { ...p, categories: p.categories.map((c) => (c.key === key && !c.mandatory ? { ...c, enabled: !c.enabled } : c)) });
+  }
+
+  async function save() {
+    if (!prefs) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      await api("/email/preferences", {
+        method: "PUT",
+        body: JSON.stringify({
+          digestOnly: prefs.digestOnly,
+          categories: Object.fromEntries(prefs.categories.map((c) => [c.key, c.enabled]))
+        })
+      });
+      setMessage({ ok: true, text: "Email preferences saved." });
+    } catch (err: any) {
+      setMessage({ ok: false, text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const instant = prefs.categories.filter((c) => !["daily_digest", "weekly_summary", "publishing"].includes(c.key));
+  const scheduled = prefs.categories.filter((c) => ["daily_digest", "weekly_summary", "publishing"].includes(c.key));
+  const row = (c: EmailCategoryPref, dimmed = false) => (
+    <label key={c.key} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 0", borderBottom: "1px solid var(--border, #e6e9ef)", opacity: dimmed ? 0.55 : 1, cursor: c.mandatory ? "default" : "pointer" }}>
+      <input type="checkbox" checked={c.enabled} disabled={c.mandatory} onChange={() => toggle(c.key)} style={{ marginTop: 3 }} />
+      <span>
+        <span style={{ fontWeight: 500, fontSize: 14 }}>{c.label}</span>
+        {c.mandatory && <span style={{ fontSize: 11, color: "var(--muted)" }}> · always on</span>}
+        <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>{c.description}</div>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="card" style={{ marginTop: 24 }}>
+      <h3 style={{ marginBottom: 4 }}>Email Notifications</h3>
+      <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>
+        Sent to <strong>{prefs.email}</strong>. In-app notifications are not affected by these settings.
+        {!prefs.emailLive && <><br /><span style={{ color: "#d97706" }}>Email is not switched on for PRISM yet — your choices will apply once it is.</span></>}
+      </p>
+
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", marginBottom: 12, borderRadius: 6, background: "rgba(29,99,237,0.06)", cursor: "pointer" }}>
+        <input type="checkbox" checked={prefs.digestOnly} onChange={() => { setMessage(null); setPrefs({ ...prefs, digestOnly: !prefs.digestOnly }); }} style={{ marginTop: 3 }} />
+        <span>
+          <span style={{ fontWeight: 500, fontSize: 14 }}>Digest only</span>
+          <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.4 }}>
+            Don't email me as things happen — include them in my weekday-morning digest instead.
+          </div>
+        </span>
+      </label>
+
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", margin: "8px 0 2px" }}>As it happens</div>
+      {instant.map((c) => row(c, prefs.digestOnly && !c.mandatory))}
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", color: "var(--muted)", margin: "16px 0 2px" }}>Scheduled</div>
+      {scheduled.map((c) => row(c))}
+
+      {message && (
+        <div style={{ marginTop: 12, fontSize: 13, color: message.ok ? "#22c55e" : "#ef6a62" }}>{message.text}</div>
+      )}
+      <button className="button" style={{ marginTop: 16, minWidth: 140 }} onClick={save} disabled={saving}>
+        {saving ? "Saving…" : "Save Preferences"}
+      </button>
+    </div>
+  );
+}
 
 export default function ProfilePage({ user }: { user: User }) {
   const [employeeId, setEmployeeId] = useState("");
@@ -118,6 +203,8 @@ export default function ProfilePage({ user }: { user: User }) {
           {saving ? "Saving…" : "Update Employee ID"}
         </button>
       </div>
+
+      <EmailPreferencesCard />
     </div>
   );
 }

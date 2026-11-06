@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
+type AdminTab = "users" | "dashboards" | "groups" | "teams" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests" | "delete-requests";
+const ADMIN_TABS: AdminTab[] = ["users", "dashboards", "groups", "teams", "accounts", "categories", "access", "signup-requests", "access-requests", "delete-requests"];
+
 export default function AdminPage() {
-  const [tab, setTab] = useState<"users" | "dashboards" | "groups" | "teams" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests" | "delete-requests">("users");
+  // ?tab=… lets email links open the right tab directly.
+  const [tab, setTab] = useState<AdminTab>(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab") as AdminTab | null;
+    return requested && ADMIN_TABS.includes(requested) ? requested : "users";
+  });
   const [me, setMe] = useState<any>(null);
   const [signupRequests, setSignupRequests] = useState<any[]>([]);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);

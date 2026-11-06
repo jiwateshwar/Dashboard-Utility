@@ -12,3 +12,8 @@ dist/
 
 # Portainer API access token — grants full control over the Docker host.
 apiaccesstoken.key
+
+# Local secrets folder — contents never committed (see secrets/README.md).
+secrets/*
+!secrets/.gitignore
+!secrets/README.md

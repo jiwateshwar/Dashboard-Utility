@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { canManageAccounts } from "../services/permission.js";
+import { notifyUser } from "../services/notifying.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -93,11 +94,15 @@ router.post("/:id/approve", async (req, res) => {
   const acct = acctRows[0];
   if (acct?.proposed_by_user_id) {
     const finalName = account_name || acct.account_name;
-    await query(
-      `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
-      [uuid(), acct.proposed_by_user_id,
-        `Your proposed account "${acct.account_name}" has been approved${account_name && account_name !== acct.account_name ? ` and renamed to "${account_name}"` : ""} by ${acct.admin_name}.`]
-    );
+    await notifyUser({
+      userId: acct.proposed_by_user_id,
+      message: `Your proposed account "${acct.account_name}" has been approved${account_name && account_name !== acct.account_name ? ` and renamed to "${account_name}"` : ""} by ${acct.admin_name}.`,
+      type: "account_reviewed",
+      entityType: "Account",
+      entityId: id,
+      link: "/",
+      emailSubject: "Proposed account approved"
+    });
     void finalName; // suppress unused warning
   }
 
@@ -127,11 +132,15 @@ router.post("/:id/reject", async (req, res) => {
   );
 
   if (acct?.proposed_by_user_id) {
-    await query(
-      `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
-      [uuid(), acct.proposed_by_user_id,
-        `Your proposed account "${acct.account_name}" was not approved by ${acct.admin_name}. The task has been retained but the account is inactive.`]
-    );
+    await notifyUser({
+      userId: acct.proposed_by_user_id,
+      message: `Your proposed account "${acct.account_name}" was not approved by ${acct.admin_name}. The task has been retained but the account is inactive.`,
+      type: "account_reviewed",
+      entityType: "Account",
+      entityId: id,
+      link: "/",
+      emailSubject: "Proposed account not approved"
+    });
   }
 
   res.json({ ok: true });

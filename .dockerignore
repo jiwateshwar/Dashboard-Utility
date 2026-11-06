@@ -4,3 +4,4 @@
 **/.env.*
 **/.git
 **/.DS_Store
+**/secrets

@@ -6,6 +6,7 @@ import { query } from "../db.js";
 import { getSubordinateIds } from "../services/hierarchy.js";
 import { getUserRole, hasDashboardAccess, isDashboardOwner, canEditDashboard, isAdminRole } from "../services/permission.js";
 import { logAudit } from "../services/auditing.js";
+import { notifyUser, notifyUsers, getDashboardOwnerIds } from "../services/notifying.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -107,6 +108,31 @@ router.post("/", async (req, res) => {
     [id, dashboard_id, account_id, decision_title, decision_context || null, decision_owner, decision_deadline, impact_area || null, status || "Pending", publish_flag ?? false, userId]
   );
 
+  const dashName = (await query(`SELECT name FROM dashboards WHERE id = $1`, [dashboard_id])).rows[0]?.name ?? "a dashboard";
+  const deadline = dayjs(decision_deadline).format("DD MMM YYYY");
+  if (decision_owner !== userId) {
+    await notifyUser({
+      userId: decision_owner,
+      message: `You are the owner of decision "${decision_title}" in ${dashName}, due ${deadline}.`,
+      type: "decision_assigned",
+      entityType: "Decision",
+      entityId: id,
+      dashboardId: dashboard_id
+    });
+  }
+  if ((status || "Pending") === "Pending") {
+    // Dashboard owners approve decisions. Skip the decision owner here — they
+    // already got the assignment notice above.
+    const approvers = (await getDashboardOwnerIds(dashboard_id)).filter((u) => u !== decision_owner);
+    await notifyUsers(approvers, {
+      message: `New decision pending approval in ${dashName}: "${decision_title}" (deadline ${deadline}).`,
+      type: "decision_pending",
+      entityType: "Decision",
+      entityId: id,
+      dashboardId: dashboard_id
+    }, userId);
+  }
+
   res.json({ id });
 });
 
@@ -164,6 +190,21 @@ router.post("/:id/approve", async (req, res) => {
      WHERE id = $1`,
     [id, userId]
   );
+  const approved = await query(
+    `SELECT dc.decision_title, dc.decision_owner, dc.created_by, d.name AS dashboard_name
+     FROM decisions dc JOIN dashboards d ON d.id = dc.dashboard_id WHERE dc.id = $1`,
+    [id]
+  );
+  const ap = approved.rows[0];
+  if (ap) {
+    await notifyUsers([ap.decision_owner, ap.created_by], {
+      message: `Decision "${ap.decision_title}" in ${ap.dashboard_name} was approved.`,
+      type: "decision_approved",
+      entityType: "Decision",
+      entityId: id,
+      dashboardId
+    }, userId);
+  }
   await logAudit({
     entityType: "Decision",
     entityId: id,

@@ -107,3 +107,23 @@ export async function testEntraConnection(tenantId: string, clientId: string, cl
   const cfg = await discoverConfig(tenantId, clientId, clientSecret);
   await client.clientCredentialsGrant(cfg, { scope: "https://graph.microsoft.com/.default" });
 }
+
+// App-only Microsoft Graph token for sending email (Graph sendMail), using the
+// same App Registration as SSO. Only needs tenant/client/secret to be saved —
+// SSO login itself doesn't have to be live. The app must be granted the
+// Mail.Send *application* permission (admin consent) in Azure, ideally
+// scoped to the sending mailbox with an Exchange application access policy.
+let graphToken: { key: string; token: string; expiresAt: number } | null = null;
+
+export async function getGraphAppToken(): Promise<string> {
+  const s = await getSsoSettings();
+  if (!(s.tenantId && s.clientId && s.clientSecret)) {
+    throw new Error("Microsoft Graph sending needs the Entra App Registration saved under SSO Settings (tenant ID, client ID, client secret)");
+  }
+  const key = cacheKey(s);
+  if (graphToken && graphToken.key === key && Date.now() < graphToken.expiresAt - 120_000) return graphToken.token;
+  const cfg = await discoverConfig(s.tenantId, s.clientId, s.clientSecret);
+  const tokens = await client.clientCredentialsGrant(cfg, { scope: "https://graph.microsoft.com/.default" });
+  graphToken = { key, token: tokens.access_token, expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000 };
+  return graphToken.token;
+}

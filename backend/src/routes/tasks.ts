@@ -5,7 +5,7 @@ import { query } from "../db.js";
 import { getSubordinateIds } from "../services/hierarchy.js";
 import { getUserRole, hasDashboardAccess, isDashboardOwner, canEditDashboard, isAdminRole } from "../services/permission.js";
 import { logAudit } from "../services/auditing.js";
-import { notifyUser } from "../services/notifying.js";
+import { notifyUser, notifyUsers, getAdminIds } from "../services/notifying.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -233,16 +233,13 @@ router.post("/", async (req, res) => {
       // Notify all admins and superadmins
       const proposer = await query(`SELECT name FROM users WHERE id = $1`, [userId]);
       const proposerName = proposer.rows[0]?.name ?? "A user";
-      const admins = await query(
-        `SELECT id FROM users WHERE role IN ('Admin', 'SuperAdmin') AND is_active = true`
-      );
-      for (const admin of admins.rows) {
-        await query(
-          `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
-          [uuid(), admin.id,
-            `${proposerName} proposed a new account: "${trimmedName}". Review it in Admin › Accounts.`]
-        );
-      }
+      await notifyUsers(await getAdminIds(), {
+        message: `${proposerName} proposed a new account: "${trimmedName}". Review it in Admin › Accounts.`,
+        type: "account_proposed",
+        entityType: "Account",
+        entityId: newAccId,
+        link: "/manage"
+      });
     }
   }
 
@@ -425,16 +422,14 @@ router.post("/:id/close-request", async (req, res) => {
     [id]
   );
 
-  await notifyStatusChange({
-    taskId: id,
-    dashboardId: task.rows[0].dashboard_id,
-    dashboardName: task.rows[0].dashboard_name,
-    label: task.rows[0].title || task.rows[0].item_details,
-    oldStatus: "Open/In Progress",
-    newStatus: "Closed Pending Approval",
-    actorUserId: userId,
-    recipientIds: [task.rows[0].created_by]
-  });
+  const requester = await query(`SELECT name FROM users WHERE id = $1`, [userId]);
+  await notifyUsers([task.rows[0].created_by], {
+    message: `${requester.rows[0]?.name ?? "An owner"} requested closure of "${task.rows[0].title || task.rows[0].item_details}" in ${task.rows[0].dashboard_name}. Please review and approve.`,
+    type: "task_closure_requested",
+    entityType: "Task",
+    entityId: id,
+    dashboardId: task.rows[0].dashboard_id
+  }, userId);
 
   res.json({ ok: true });
 });
@@ -466,16 +461,13 @@ router.post("/:id/approve", async (req, res) => {
   );
 
   const owners = await query(`SELECT user_id FROM task_owners WHERE task_id = $1`, [id]);
-  await notifyStatusChange({
-    taskId: id,
-    dashboardId,
-    dashboardName: task.rows[0].dashboard_name,
-    label: task.rows[0].title || task.rows[0].item_details,
-    oldStatus: "Closed Pending Approval",
-    newStatus: "Closed Accepted",
-    actorUserId: userId,
-    recipientIds: owners.rows.map((r: any) => r.user_id)
-  });
+  await notifyUsers(owners.rows.map((r: any) => r.user_id), {
+    message: `Closure of "${task.rows[0].title || task.rows[0].item_details}" in ${task.rows[0].dashboard_name} was approved.`,
+    type: "task_closure_approved",
+    entityType: "Task",
+    entityId: id,
+    dashboardId
+  }, userId);
 
   await logAudit({
     entityType: "Task",

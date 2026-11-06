@@ -5,6 +5,28 @@ import { query } from "../db.js";
 import { getSubordinateIds } from "../services/hierarchy.js";
 import { getUserRole, hasDashboardAccess, isDashboardOwner, canEditDashboard, isAdminRole } from "../services/permission.js";
 import { logAudit } from "../services/auditing.js";
+import { notifyUsers, getDashboardOwnerIds } from "../services/notifying.js";
+
+/** Owners of the dashboard plus the risk owner hear about a risk turning Critical. */
+async function notifyCriticalRisk(riskId: string, actorUserId: string) {
+  const { rows } = await query(
+    `SELECT r.risk_title, r.risk_owner, r.dashboard_id, r.probability, r.mitigation_plan, d.name AS dashboard_name, u.name AS owner_name
+     FROM risks r JOIN dashboards d ON d.id = r.dashboard_id JOIN users u ON u.id = r.risk_owner
+     WHERE r.id = $1`,
+    [riskId]
+  );
+  const r = rows[0];
+  if (!r) return;
+  const owners = await getDashboardOwnerIds(r.dashboard_id);
+  await notifyUsers([...owners, r.risk_owner], {
+    message: `Risk "${r.risk_title}" in ${r.dashboard_name} is now Critical (probability ${r.probability}, owner ${r.owner_name}).${r.mitigation_plan ? ` Mitigation: ${r.mitigation_plan}` : " No mitigation plan recorded yet."}`,
+    type: "risk_critical",
+    entityType: "Risk",
+    entityId: riskId,
+    dashboardId: r.dashboard_id,
+    emailSubject: `Critical risk: ${r.risk_title}`
+  }, actorUserId);
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -114,6 +136,10 @@ router.post("/", async (req, res) => {
     [id, dashboard_id, account_id, risk_title, risk_description || null, risk_owner, impact_level, probability, score, mitigation_plan || null, target_mitigation_date || null, status || "Open", publish_flag ?? false]
   );
 
+  if (impact_level === "Critical" && (status || "Open") === "Open") {
+    await notifyCriticalRisk(id, userId);
+  }
+
   res.json({ id });
 });
 
@@ -161,6 +187,10 @@ router.patch("/:id", async (req, res) => {
       req.body.publish_flag
     ]
   );
+
+  if (newImpact === "Critical" && risk.rows[0].impact_level !== "Critical") {
+    await notifyCriticalRisk(id, userId);
+  }
 
   await logAudit({ entityType: "Risk", entityId: id, changedBy: userId, oldValue: risk.rows[0], newValue: req.body });
 

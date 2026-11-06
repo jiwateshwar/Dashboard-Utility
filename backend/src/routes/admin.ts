@@ -2,6 +2,38 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getUserRole, isAdminRole } from "../services/permission.js";
+import { enqueueEmail } from "../services/mailer.js";
+import { renderEmail } from "../services/emailTemplates.js";
+import { getAppBaseUrl } from "../services/emailSettings.js";
+
+// The requester has no PRISM account (or no access) yet, so they can't see an
+// in-app notification — email is the only way they learn the outcome.
+async function emailSignupOutcome(to: string, name: string, approved: boolean, viaSso: boolean) {
+  try {
+    const baseUrl = await getAppBaseUrl();
+    const { html, text } = renderEmail({
+      heading: approved ? "Your PRISM access is approved" : "Your PRISM signup request",
+      intro: approved
+        ? `Hi ${name},
+Your request for access to PRISM has been approved. ${viaSso ? "Sign in with your Microsoft work account." : "Sign in with your email address and employee ID."}`
+        : `Hi ${name},
+Your request for access to PRISM was not approved. If you think this is a mistake, please contact your manager or a PRISM administrator.`,
+      ctaUrl: approved ? baseUrl : undefined,
+      ctaLabel: "Sign in to PRISM",
+      baseUrl,
+      showPrefsLink: false
+    });
+    await enqueueEmail({
+      to,
+      category: "account",
+      subject: approved ? "Your access is approved" : "Your signup request",
+      html,
+      text
+    });
+  } catch (err) {
+    console.error("[admin] signup outcome email failed to queue:", err);
+  }
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -116,6 +148,7 @@ router.post("/signup-requests/:id/approve", async (req, res) => {
      WHERE id = $1`,
     [req.params.id, req.session.userId]
   );
+  await emailSignupOutcome(sr.email, sr.name, true, !!sr.sso_oid);
   res.json({ ok: true });
 });
 
@@ -126,10 +159,12 @@ router.post("/signup-requests/:id/reject", async (req, res) => {
     `UPDATE signup_requests
      SET status = 'Rejected', reviewed_by = $2, reviewed_at = now()
      WHERE id = $1 AND status = 'Pending'
-     RETURNING id`,
+     RETURNING id, name, email, sso_oid`,
     [req.params.id, req.session.userId]
   );
   if (result.rows.length === 0) return res.status(404).json({ error: "Not found or already reviewed" });
+  const rejected = result.rows[0];
+  await emailSignupOutcome(rejected.email, rejected.name, false, !!rejected.sso_oid);
   res.json({ ok: true });
 });
 

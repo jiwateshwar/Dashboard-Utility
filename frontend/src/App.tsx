@@ -18,6 +18,7 @@ import AccessLogPage from "./pages/AccessLogPage";
 import ProfilePage from "./pages/ProfilePage";
 import SystemBackupsPage from "./pages/SystemBackupsPage";
 import SsoSettingsPage from "./pages/SsoSettingsPage";
+import EmailSettingsPage from "./pages/EmailSettingsPage";
 import Sidebar from "./components/Sidebar";
 
 export type User = {
@@ -149,6 +150,7 @@ export default function App() {
             <Route path="/access-logs" element={<AccessLogPage />} />
             <Route path="/system-backups" element={<SystemBackupsPage />} />
             <Route path="/sso-settings" element={<SsoSettingsPage />} />
+            <Route path="/email-settings" element={<EmailSettingsPage />} />
             <Route path="/profile" element={<ProfilePage user={user} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

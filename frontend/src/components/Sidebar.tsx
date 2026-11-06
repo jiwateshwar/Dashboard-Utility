@@ -83,6 +83,11 @@ export default function Sidebar({ user }: { user: User }) {
           SSO Settings
         </NavLink>
       )}
+      {isSuperAdmin && (
+        <NavLink className="nav-item" to="/email-settings">
+          Email Settings
+        </NavLink>
+      )}
       <NavLink className="nav-item" to="/notifications" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         Notifications
         {unreadNotifications > 0 && (

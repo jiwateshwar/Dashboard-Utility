@@ -12,6 +12,7 @@ type TableSpec = { name: string; selfRefColumn?: string };
 
 const TABLE_EXPORT_ORDER: TableSpec[] = [
   { name: "users", selfRefColumn: "manager_id" },
+  { name: "user_email_prefs" },
   { name: "accounts" },
   { name: "groups" },
   { name: "dashboards", selfRefColumn: "parent_dashboard_id" },

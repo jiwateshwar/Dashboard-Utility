@@ -22,6 +22,7 @@ import linksRouter from "./links.js";
 import shareTeamsRouter from "./shareTeams.js";
 import dbSnapshotsRouter from "./dbSnapshots.js";
 import ssoRouter from "./sso.js";
+import emailRouter from "./email.js";
 
 export const router = Router();
 
@@ -48,3 +49,4 @@ router.use("/links", linksRouter);
 router.use("/share-teams", shareTeamsRouter);
 router.use("/db-snapshots", dbSnapshotsRouter);
 router.use("/sso", ssoRouter);
+router.use("/email", emailRouter);

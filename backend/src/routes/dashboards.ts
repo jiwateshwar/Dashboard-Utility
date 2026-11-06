@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getUserRole, isDashboardOwner, hasDashboardAccess, isAdminRole } from "../services/permission.js";
 import { CLOSED_TASK_STATUSES } from "../constants.js";
-import { notifyUser } from "../services/notifying.js";
+import { notifyUser, notifyUsers, getAdminIds, getDashboardOwnerIds } from "../services/notifying.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -168,11 +168,12 @@ router.post("/access-requests/:id/approve", async (req, res) => {
   const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [request.dashboard_id]);
   await notifyUser({
     userId: request.user_id,
-    message: `You were granted access to dashboard "${dash.rows[0]?.name ?? "a dashboard"}"`,
-    type: "dashboard_assigned",
+    message: `Your request for access to dashboard "${dash.rows[0]?.name ?? "a dashboard"}" was approved.`,
+    type: "access_reviewed",
     entityType: "Dashboard",
     entityId: request.dashboard_id,
-    dashboardId: request.dashboard_id
+    dashboardId: request.dashboard_id,
+    emailSubject: "Dashboard access approved"
   });
 
   res.json({ ok: true });
@@ -195,6 +196,17 @@ router.post("/access-requests/:id/reject", async (req, res) => {
     `UPDATE dashboard_access_requests SET status = 'Rejected', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
     [id, userId]
   );
+
+  const dash = await query(`SELECT name FROM dashboards WHERE id = $1`, [request.dashboard_id]);
+  await notifyUser({
+    userId: request.user_id,
+    message: `Your request for access to dashboard "${dash.rows[0]?.name ?? "a dashboard"}" was not approved.`,
+    type: "access_reviewed",
+    entityType: "Dashboard",
+    entityId: request.dashboard_id,
+    link: "/",
+    emailSubject: "Dashboard access request declined"
+  });
   res.json({ ok: true });
 });
 
@@ -226,10 +238,16 @@ router.post("/delete-requests/:reqId/approve", async (req, res) => {
     `UPDATE dashboard_delete_requests SET status = 'Approved', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
     [dr.id, userId]
   );
-  await query(
-    `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
-    [uuid(), dr.requested_by, `Your request to delete dashboard "${(await query(`SELECT name FROM dashboards WHERE id = $1`, [dr.dashboard_id])).rows[0]?.name}" has been approved.`]
-  );
+  const approvedName = (await query(`SELECT name FROM dashboards WHERE id = $1`, [dr.dashboard_id])).rows[0]?.name;
+  await notifyUser({
+    userId: dr.requested_by,
+    message: `Your request to delete dashboard "${approvedName}" has been approved.`,
+    type: "delete_reviewed",
+    entityType: "Dashboard",
+    entityId: dr.dashboard_id,
+    link: "/",
+    emailSubject: "Dashboard delete request approved"
+  });
   res.json({ ok: true });
 });
 
@@ -244,10 +262,16 @@ router.post("/delete-requests/:reqId/reject", async (req, res) => {
     `UPDATE dashboard_delete_requests SET status = 'Rejected', reviewed_by = $2, reviewed_at = now() WHERE id = $1`,
     [dr.id, userId]
   );
-  await query(
-    `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
-    [uuid(), dr.requested_by, `Your request to delete dashboard "${(await query(`SELECT name FROM dashboards WHERE id = $1`, [dr.dashboard_id])).rows[0]?.name}" has been rejected.`]
-  );
+  const rejectedName = (await query(`SELECT name FROM dashboards WHERE id = $1`, [dr.dashboard_id])).rows[0]?.name;
+  await notifyUser({
+    userId: dr.requested_by,
+    message: `Your request to delete dashboard "${rejectedName}" has been rejected.`,
+    type: "delete_reviewed",
+    entityType: "Dashboard",
+    entityId: dr.dashboard_id,
+    dashboardId: dr.dashboard_id,
+    emailSubject: "Dashboard delete request rejected"
+  });
   res.json({ ok: true });
 });
 
@@ -314,6 +338,16 @@ router.post("/:id/request-access", async (req, res) => {
      DO UPDATE SET status = 'Pending', reviewed_by = NULL, reviewed_at = NULL`,
     [id, userId]
   );
+
+  const dashRow = await query(`SELECT name FROM dashboards WHERE id = $1`, [id]);
+  const requesterRow = await query(`SELECT name, email FROM users WHERE id = $1`, [userId]);
+  await notifyUsers(await getDashboardOwnerIds(id), {
+    message: `${requesterRow.rows[0]?.name ?? "A user"} (${requesterRow.rows[0]?.email ?? ""}) requested access to dashboard "${dashRow.rows[0]?.name ?? "a dashboard"}".`,
+    type: "access_requested",
+    entityType: "Dashboard",
+    entityId: id,
+    dashboardId: id
+  }, userId);
   res.json({ ok: true });
 });
 
@@ -335,13 +369,13 @@ router.post("/:id/delete-request", async (req, res) => {
   const dbName = db.rows[0]?.name ?? "a dashboard";
   const requester = await query(`SELECT name FROM users WHERE id = $1`, [userId]);
   const requesterName = requester.rows[0]?.name ?? "A user";
-  const superAdmins = await query(`SELECT id FROM users WHERE role = 'SuperAdmin' AND is_active = true`);
-  for (const sa of superAdmins.rows) {
-    await query(
-      `INSERT INTO notifications (id, user_id, message) VALUES ($1, $2, $3)`,
-      [uuid(), sa.id, `${requesterName} has requested deletion of dashboard "${dbName}". Review it in Admin › Delete Requests.`]
-    );
-  }
+  await notifyUsers(await getAdminIds(true), {
+    message: `${requesterName} has requested deletion of dashboard "${dbName}"${reason ? ` — reason: ${reason}` : ""}. Review it in Admin › Delete Requests.`,
+    type: "delete_requested",
+    entityType: "Dashboard",
+    entityId: id,
+    link: "/manage?tab=delete-requests"
+  });
   res.json({ ok: true });
 });
 

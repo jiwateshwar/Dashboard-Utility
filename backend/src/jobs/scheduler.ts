@@ -7,12 +7,32 @@ import { query } from "../db.js";
 import { buildSnapshotContent } from "../services/publishing.js";
 import { createSnapshot, pruneOldSnapshots } from "../services/dbSnapshot.js";
 import { v4 as uuid } from "uuid";
+import { processOutbox, pruneOutbox } from "../services/mailer.js";
+import {
+  isPublishingDay,
+  sendDailyDigests,
+  sendPublishedNotices,
+  sendPublishingReminders,
+  sendSystemAlert,
+  sendWeeklySummaries
+} from "../services/digests.js";
+
+// User-facing email times are in local business time, not the container's UTC.
+const NOTIFY_TZ = process.env.NOTIFY_TZ || "Asia/Kolkata";
+
+/** Runs one step of a job; logs and alerts SuperAdmins on failure without stopping later steps. */
+async function step(name: string, fn: () => Promise<unknown>) {
+  try {
+    await fn();
+  } catch (err) {
+    console.error(`[scheduler] ${name} failed:`, err);
+    await sendSystemAlert(name, err);
+  }
+}
 
 async function runPublishingCycle() {
   const today = dayjs();
-  const is15th = today.date() === 15;
-  const isLastDay = today.date() === today.daysInMonth();
-  if (!is15th && !isLastDay) return;
+  if (!isPublishingDay(today)) return;
 
   const dashboards = await query(`SELECT id FROM dashboards WHERE is_active = true`);
   for (const dash of dashboards.rows) {
@@ -23,14 +43,49 @@ async function runPublishingCycle() {
       [uuid(), dash.id, today.format("YYYY-MM-DD"), JSON.stringify(content)]
     );
   }
+  await sendPublishedNotices();
 }
 
 cron.schedule("0 2 * * *", async () => {
-  await runArchival();
-  await runEscalations();
-  await notifyOverdueTasks();
-  await runPublishingCycle();
+  await step("Archival", runArchival);
+  await step("Escalations", runEscalations);
+  await step("Overdue reminders", notifyOverdueTasks);
+  await step("Publishing cycle", runPublishingCycle);
+  await step("Email outbox cleanup", pruneOutbox);
 });
+
+// Email outbox worker — sends queued emails, retries failures with backoff.
+cron.schedule("* * * * *", () => {
+  void processOutbox();
+});
+
+// Daily digest, weekdays 08:30 local (after the 02:00 UTC escalation run).
+cron.schedule(
+  "30 8 * * 1-5",
+  async () => {
+    await step("Daily digest", () => sendDailyDigests());
+  },
+  { timezone: NOTIFY_TZ }
+);
+
+// Publishing-cycle reminder (2 days ahead) — daily, since the 15th/month-end
+// minus two can land on a weekend.
+cron.schedule(
+  "0 9 * * *",
+  async () => {
+    await step("Publishing reminders", sendPublishingReminders);
+  },
+  { timezone: NOTIFY_TZ }
+);
+
+// Weekly summary, Monday 09:00 local.
+cron.schedule(
+  "0 9 * * 1",
+  async () => {
+    await step("Weekly summary", () => sendWeeklySummaries());
+  },
+  { timezone: NOTIFY_TZ }
+);
 
 // Weekly full-database snapshot (Sunday 03:00) — kept as an independent
 // registration so a failure here doesn't affect the daily job above.
@@ -40,5 +95,6 @@ cron.schedule("0 3 * * 0", async () => {
     await pruneOldSnapshots();
   } catch (err) {
     console.error("[scheduler] weekly snapshot failed:", err);
+    await sendSystemAlert("Weekly database snapshot", err);
   }
 });

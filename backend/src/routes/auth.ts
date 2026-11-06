@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { env } from "../utils/env.js";
 import { buildLoginRedirect, exchangeCode } from "../services/entra.js";
 import { getSsoSettings, isSsoEnabled } from "../services/ssoSettings.js";
+import { notifyUsers, getAdminIds } from "../services/notifying.js";
 
 const router = Router();
 
@@ -27,15 +28,11 @@ function currentOrigin(req: import("express").Request): string | null {
 }
 
 async function notifyAdminsOfSignupRequest(name: string, email: string) {
-  const admins = await query(
-    `SELECT id FROM users WHERE role::text IN ('Admin', 'SuperAdmin') AND is_active = true`
-  );
-  for (const admin of admins.rows) {
-    await query(
-      `INSERT INTO notifications (id, user_id, message) VALUES (gen_random_uuid(), $1, $2)`,
-      [admin.id, `New signup request from ${name} (${email})`]
-    );
-  }
+  await notifyUsers(await getAdminIds(), {
+    message: `New signup request from ${name} (${email})`,
+    type: "signup_requested",
+    link: "/manage?tab=signup-requests"
+  });
 }
 
 router.post("/login", async (req, res) => {
