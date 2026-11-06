@@ -44,7 +44,22 @@ const TABLE_EXPORT_ORDER: TableSpec[] = [
 // Tables intentionally excluded from every snapshot: session data is
 // transient, schema_migrations/db_snapshots are the migration/backup
 // system's own bookkeeping and shouldn't recursively back themselves up.
-const EXCLUDED_TABLES = new Set(["session", "schema_migrations", "db_snapshots"]);
+// email_outbox is a transient send queue. The *_settings tables are this
+// host's own configuration (and hold secrets such as the SSO client secret
+// and SMTP password), so they never travel inside a downloadable backup.
+const EXCLUDED_TABLES = new Set([
+  "session",
+  "schema_migrations",
+  "db_snapshots",
+  "email_outbox",
+  "sso_settings",
+  "email_settings"
+]);
+
+// Host configuration that must survive a restore untouched. These tables
+// reference users(id), so `TRUNCATE users ... CASCADE` would otherwise wipe
+// them; restoreSnapshot() saves their rows first and puts them back after.
+const PRESERVED_ON_RESTORE = ["sso_settings", "email_settings"];
 
 type SnapshotManifest = {
   formatVersion: number;
@@ -291,6 +306,17 @@ export async function restoreSnapshot(snapshotId: string, actingUserId: string) 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // Save host settings before the cascading truncate removes them.
+    const preserved: { name: string; columns: string[]; rows: any[] }[] = [];
+    for (const name of PRESERVED_ON_RESTORE) {
+      const { rows: exists } = await client.query(`SELECT to_regclass($1) AS t`, [`public.${name}`]);
+      if (!exists[0].t) continue;
+      // Use this client, not the pool: everything here runs inside one transaction.
+      const { rows: saved, fields } = await client.query(`SELECT * FROM "${name}"`);
+      preserved.push({ name, columns: fields.map((f) => f.name), rows: saved });
+    }
+
     const tableList = TABLE_EXPORT_ORDER.map((t) => `"${t.name}"`).join(", ");
     await client.query(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
 
@@ -303,6 +329,14 @@ export async function restoreSnapshot(snapshotId: string, actingUserId: string) 
       } else {
         await batchInsert(client, spec.name, tableInfo.columns, rowsForTable);
       }
+    }
+
+    // Put host settings back. updated_by may point at a user who isn't in
+    // the restored data, so clear it rather than break the foreign key.
+    for (const p of preserved) {
+      await client.query(`DELETE FROM "${p.name}"`);
+      const rowsBack = p.rows.map((r) => ("updated_by" in r ? { ...r, updated_by: null } : r));
+      if (rowsBack.length > 0) await batchInsert(client, p.name, p.columns, rowsBack);
     }
     await client.query("COMMIT");
   } catch (err) {
