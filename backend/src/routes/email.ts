@@ -11,7 +11,8 @@ import {
   saveEmailSettings,
   setEmailEnabled
 } from "../services/emailSettings.js";
-import { EMAIL_CATEGORIES, EmailCategory, processOutbox, sendTestEmail } from "../services/mailer.js";
+import { X509Certificate } from "crypto";
+import { EMAIL_CATEGORIES, EmailCategory, processOutbox, sendTestEmail, isCertificateError, describeServerCertificate } from "../services/mailer.js";
 import { renderEmail } from "../services/emailTemplates.js";
 import { sendDailyDigests, sendWeeklySummaries } from "../services/digests.js";
 
@@ -37,6 +38,7 @@ function toClient(s: EmailSettings) {
     smtpUser: s.smtpUser,
     smtpPasswordSet: !!s.smtpPassword,
     tlsRejectUnauthorized: s.tlsRejectUnauthorized,
+    tlsCaPem: s.tlsCaPem,
     fromAddress: s.fromAddress,
     fromName: s.fromName,
     appBaseUrl: s.appBaseUrl,
@@ -78,6 +80,15 @@ router.put("/settings", async (req, res) => {
   if (!/^https?:\/\/\S+$/.test(appBaseUrl)) {
     return res.status(400).json({ error: "App URL must start with http:// or https://" });
   }
+  const tlsCaPem = String(b.tlsCaPem ?? "").trim();
+  if (tlsCaPem) {
+    const blocks = tlsCaPem.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) || [];
+    if (blocks.length === 0) {
+      return res.status(400).json({ error: "Trusted CA certificate must be PEM text starting with -----BEGIN CERTIFICATE-----" });
+    }
+    try { blocks.forEach((pem) => new X509Certificate(pem)); }
+    catch { return res.status(400).json({ error: "Trusted CA certificate could not be read — paste the full PEM block(s)" }); }
+  }
   const saved = await saveEmailSettings(
     {
       transport,
@@ -88,6 +99,7 @@ router.put("/settings", async (req, res) => {
       smtpPassword: typeof b.smtpPassword === "string" ? b.smtpPassword : undefined,
       clearPassword: !!b.clearPassword,
       tlsRejectUnauthorized: b.tlsRejectUnauthorized !== false,
+      tlsCaPem: tlsCaPem || null,
       fromAddress,
       fromName: String(b.fromName ?? "").trim() || "PRISM",
       appBaseUrl
@@ -118,7 +130,11 @@ router.post("/settings/test", async (req, res) => {
     await recordEmailTestResult(true, null);
     res.json({ ok: true, to });
   } catch (err: any) {
-    const message = err?.response || err?.message || "Test email failed";
+    let message = String(err?.response || err?.message || "Test email failed");
+    if (settings.transport === "smtp" && isCertificateError(err)) {
+      message += "\n\n" + (await describeServerCertificate(settings)) +
+        "\nFix: paste the issuing CA / intermediate certificate (PEM) into \"Trusted CA certificate\" and save.";
+    }
     await recordEmailTestResult(false, String(message).slice(0, 1000));
     res.json({ ok: false, error: String(message) });
   }

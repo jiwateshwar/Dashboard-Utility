@@ -9,6 +9,7 @@ type EmailSettings = {
   smtpUser: string | null;
   smtpPasswordSet: boolean;
   tlsRejectUnauthorized: boolean;
+  tlsCaPem: string | null;
   fromAddress: string | null;
   fromName: string;
   appBaseUrl: string | null;
@@ -44,6 +45,7 @@ export default function EmailSettingsPage() {
     smtpUser: "",
     smtpPassword: "",
     tlsRejectUnauthorized: true,
+    tlsCaPem: "",
     fromAddress: "",
     fromName: "PRISM",
     appBaseUrl: ""
@@ -65,6 +67,7 @@ export default function EmailSettingsPage() {
       smtpUser: s.smtpUser ?? "",
       smtpPassword: "",
       tlsRejectUnauthorized: s.tlsRejectUnauthorized,
+      tlsCaPem: s.tlsCaPem ?? "",
       fromAddress: s.fromAddress ?? "",
       fromName: s.fromName ?? "PRISM",
       appBaseUrl: s.appBaseUrl ?? window.location.origin
@@ -241,6 +244,21 @@ export default function EmailSettingsPage() {
             <input type="checkbox" checked={form.tlsRejectUnauthorized} onChange={set("tlsRejectUnauthorized")} />
             Verify the server's TLS certificate (untick only for an internal relay with a self-signed certificate)
           </label>
+
+          <label style={label}>Trusted CA certificate (optional, PEM)</label>
+          <textarea
+            className="input"
+            value={form.tlsCaPem ?? ""}
+            onChange={set("tlsCaPem")}
+            placeholder={"-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----"}
+            rows={5}
+            spellCheck={false}
+            style={{ ...field, fontFamily: "ui-monospace, Consolas, monospace", fontSize: 12 }}
+          />
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: -6, marginBottom: 16, maxWidth: 480 }}>
+            Only needed if the test fails with a certificate error. Paste the issuing or intermediate CA certificate(s);
+            they are trusted in addition to the standard public roots, so verification stays on.
+          </div>
           </>)}
 
           <h3 style={{ margin: "8px 0 12px 0" }}>Sender & Links</h3>

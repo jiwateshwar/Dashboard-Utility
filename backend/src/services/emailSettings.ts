@@ -11,6 +11,7 @@ export type EmailSettings = {
   smtpUser: string | null;
   smtpPassword: string | null;
   tlsRejectUnauthorized: boolean;
+  tlsCaPem: string | null;
   fromAddress: string | null;
   fromName: string;
   appBaseUrl: string | null;
@@ -30,6 +31,7 @@ function rowToSettings(row: any): EmailSettings {
     smtpUser: row.smtp_user,
     smtpPassword: row.smtp_password,
     tlsRejectUnauthorized: row.tls_reject_unauthorized,
+    tlsCaPem: row.tls_ca_pem ?? null,
     fromAddress: row.from_address,
     fromName: row.from_name,
     appBaseUrl: row.app_base_url,
@@ -117,6 +119,7 @@ export async function saveEmailSettings(
     smtpPassword?: string;
     clearPassword?: boolean;
     tlsRejectUnauthorized: boolean;
+    tlsCaPem?: string | null;
     fromAddress: string;
     fromName: string;
     appBaseUrl: string;
@@ -137,6 +140,7 @@ export async function saveEmailSettings(
        from_name = $8,
        app_base_url = $9,
        transport = $12,
+       tls_ca_pem = $13,
        enabled = false,
        last_tested_at = NULL,
        last_test_ok = NULL,
@@ -157,7 +161,8 @@ export async function saveEmailSettings(
       input.appBaseUrl,
       !!input.clearPassword,
       updatedBy,
-      input.transport
+      input.transport,
+      input.tlsCaPem ?? null
     ]
   );
   invalidateEmailSettings();

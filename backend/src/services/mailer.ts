@@ -1,3 +1,5 @@
+import net from "net";
+import tls from "tls";
 import nodemailer, { Transporter } from "nodemailer";
 import { query } from "../db.js";
 import { EmailSettings, getEmailSettings, isComplete, isEmailLive } from "./emailSettings.js";
@@ -27,7 +29,7 @@ export type EmailCategory = keyof typeof EMAIL_CATEGORIES;
 let transporter: { key: string; t: Transporter } | null = null;
 
 function transportKey(s: EmailSettings) {
-  return [s.smtpHost, s.smtpPort, s.smtpSecure, s.smtpUser, s.smtpPassword, s.tlsRejectUnauthorized].join("|");
+  return [s.smtpHost, s.smtpPort, s.smtpSecure, s.smtpUser, s.smtpPassword, s.tlsRejectUnauthorized, s.tlsCaPem].join("|");
 }
 
 function getTransport(s: EmailSettings): Transporter {
@@ -40,7 +42,11 @@ function getTransport(s: EmailSettings): Transporter {
     secure: s.smtpSecure,
     requireTLS: !s.smtpSecure && s.smtpPort === 587,
     auth: s.smtpUser ? { user: s.smtpUser, pass: s.smtpPassword ?? "" } : undefined,
-    tls: { rejectUnauthorized: s.tlsRejectUnauthorized },
+    // Extra CA PEMs are added to (not substituted for) Node's public roots.
+    tls: {
+      rejectUnauthorized: s.tlsRejectUnauthorized,
+      ...(s.tlsCaPem?.trim() ? { ca: [...tls.rootCertificates, s.tlsCaPem] } : {})
+    },
     connectionTimeout: 15_000,
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
@@ -90,6 +96,65 @@ async function deliver(s: EmailSettings, m: Message): Promise<void> {
 }
 
 /** Sends immediately, bypassing the outbox. Only for the settings-page test. */
+const CERT_ERROR = /certificate|UNABLE_TO_VERIFY|SELF_SIGNED|CERT_|ALTNAME/i;
+export const isCertificateError = (err: any) => CERT_ERROR.test(`${err?.code ?? ""} ${err?.message ?? ""}`);
+
+/**
+ * Diagnostic for a failed test: describes the certificate chain the SMTP
+ * server presents to *this* host, so an admin can see why verification
+ * failed. It only reads the chain after EHLO/STARTTLS and sends nothing
+ * else (no login, no mail); the connection is closed straight away.
+ */
+export function describeServerCertificate(s: EmailSettings): Promise<string> {
+  return new Promise((resolve) => {
+    const host = s.smtpHost!;
+    let tlsSock: tls.TLSSocket | null = null;
+    let finished = false;
+    // Close only the outermost socket: destroying the raw socket under a live
+    // TLS socket (and then the TLS socket) crashes Node with a segfault.
+    const done = (msg: string) => {
+      if (finished) return;
+      finished = true;
+      resolve(msg);
+      setImmediate(() => { try { (tlsSock ?? sock).destroy(); } catch { /* ignore */ } });
+    };
+    const inspect = (t: tls.TLSSocket) => {
+      const lines: string[] = [];
+      let c: any = t.getPeerCertificate(true);
+      let single: any = c;
+      const seen = new Set<string>();
+      while (c && c.fingerprint256 && !seen.has(c.fingerprint256)) {
+        seen.add(c.fingerprint256);
+        lines.push(`${lines.length + 1}. ${c.subject?.CN ?? "?"} (issued by ${c.issuer?.CN ?? "?"}${c.issuer?.O ? ", " + c.issuer.O : ""}; valid to ${c.valid_to})`);
+        c = c.issuerCertificate;
+      }
+      const selfSigned = lines.length === 1 && single?.subject?.CN === single?.issuer?.CN;
+      const note = t.authorizationError ? `Verification result: ${t.authorizationError}\n` : "";
+      done(`Certificate chain presented by ${host} to this server:\n${lines.join("\n")}\n${note}` +
+        (selfSigned ? "The certificate is self-signed." : lines.length === 1 ? "Only one certificate was sent, so its issuer (intermediate) certificate is missing." : ""));
+    };
+    const wrap = (raw: net.Socket) => {
+      // rejectUnauthorized:false only so the chain can be *read* for this report; nothing is sent over it.
+      tlsSock = tls.connect({ socket: raw, servername: host, rejectUnauthorized: false }, () => inspect(tlsSock!));
+      tlsSock.on("error", (e) => done(`Could not read the certificate: ${e.message}`));
+    };
+    const sock = net.connect(s.smtpPort, host);
+    sock.setTimeout(10_000, () => done("Could not read the certificate: timed out"));
+    sock.on("error", (e) => done(`Could not read the certificate: ${e.message}`));
+    if (s.smtpSecure) { sock.once("connect", () => wrap(sock)); return; }
+    let buf = "", stage = 0;
+    const onData = (d: Buffer) => {
+      buf += d.toString();
+      if (!/(^|\r\n)\d{3} [^\r\n]*\r\n$/.test(buf)) return;
+      const reply = buf; buf = "";
+      if (stage === 0) { sock.write("EHLO prism\r\n"); stage = 1; }
+      else if (stage === 1) { sock.write("STARTTLS\r\n"); stage = 2; }
+      else { sock.off("data", onData); if (!reply.startsWith("220")) return done(`Server refused STARTTLS: ${reply.trim()}`); wrap(sock); }
+    };
+    sock.on("data", onData);
+  });
+}
+
 export async function sendTestEmail(to: string, html: string, text: string): Promise<void> {
   const s = await getEmailSettings(true);
   if (!isComplete(s)) throw new Error("Save the configuration (including the From address) first");
