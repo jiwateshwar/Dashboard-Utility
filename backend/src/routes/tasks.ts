@@ -367,6 +367,12 @@ router.patch("/:id", async (req, res) => {
            WHEN $7 = 'Dropped' AND closure_approved_at IS NULL THEN now()
            ELSE closure_approved_at
          END,
+         -- Start the 3-week auto-close clock when the edit form moves a task into
+         -- pending approval (POST /:id/close-request already sets it).
+         closure_requested_at = CASE
+           WHEN $7 = 'Closed Pending Approval' AND status <> 'Closed Pending Approval' THEN now()
+           ELSE closure_requested_at
+         END,
          updated_at = now()
      WHERE id = $1`,
     [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null, focusWeekProvided, focus_week_start || null]
@@ -434,50 +440,93 @@ router.post("/:id/close-request", async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/:id/approve", async (req, res) => {
-  const { id } = req.params;
-  const userId = req.session.userId!;
+/**
+ * Accepts or rejects a task's closure request. Only the task's creator (or an
+ * admin) may decide. Rejecting sends the task back to Open and tells the
+ * owners why. Returns an HTTP-style status so single and bulk routes share it.
+ */
+async function decideClosure(id: string, userId: string, action: "approve" | "reject", reason?: string): Promise<{ status: number; error?: string }> {
   const task = await query(
-    `SELECT t.dashboard_id, t.created_by, t.title, t.item_details, d.name as dashboard_name
+    `SELECT t.dashboard_id, t.created_by, t.status, t.title, t.item_details, d.name as dashboard_name
      FROM tasks t JOIN dashboards d ON d.id = t.dashboard_id
      WHERE t.id = $1`,
     [id]
   );
-  if (task.rows.length === 0) return res.status(404).json({ error: "Not found" });
-
-  const dashboardId = task.rows[0].dashboard_id as string;
-  const creatorId = task.rows[0].created_by as string;
+  if (task.rows.length === 0) return { status: 404, error: "Not found" };
+  const t = task.rows[0];
+  const label = t.title || t.item_details;
 
   const role = await getUserRole(userId);
-  if (userId !== creatorId && !isAdminRole(role)) {
-    return res.status(403).json({ error: "Only the task's creator (or an admin) can approve its closure" });
+  if (userId !== t.created_by && !isAdminRole(role)) {
+    return { status: 403, error: "Only the task's creator (or an admin) can decide on its closure" };
+  }
+  if (action === "reject" && t.status !== "Closed Pending Approval") {
+    return { status: 400, error: "This task isn't waiting for closure approval" };
   }
 
-  await query(
-    `UPDATE tasks
-     SET status = 'Closed Accepted', closure_approved_by = $2, closure_approved_at = now(), updated_at = now()
-     WHERE id = $1`,
-    [id, userId]
-  );
+  if (action === "approve") {
+    await query(
+      `UPDATE tasks
+       SET status = 'Closed Accepted', closure_approved_by = $2, closure_approved_at = now(), updated_at = now()
+       WHERE id = $1`,
+      [id, userId]
+    );
+  } else {
+    await query(
+      `UPDATE tasks SET status = 'Open', closure_requested_at = NULL, updated_at = now() WHERE id = $1`,
+      [id]
+    );
+  }
 
   const owners = await query(`SELECT user_id FROM task_owners WHERE task_id = $1`, [id]);
-  await notifyUsers(owners.rows.map((r: any) => r.user_id), {
-    message: `Closure of "${task.rows[0].title || task.rows[0].item_details}" in ${task.rows[0].dashboard_name} was approved.`,
-    type: "task_closure_approved",
-    entityType: "Task",
-    entityId: id,
-    dashboardId
-  }, userId);
+  const decider = (await query(`SELECT name FROM users WHERE id = $1`, [userId])).rows[0]?.name ?? "The approver";
+  await notifyUsers(owners.rows.map((r: any) => r.user_id), action === "approve"
+    ? {
+        message: `Closure of "${label}" in ${t.dashboard_name} was approved.`,
+        type: "task_closure_approved", entityType: "Task", entityId: id, dashboardId: t.dashboard_id
+      }
+    : {
+        message: `${decider} rejected the closure of "${label}" in ${t.dashboard_name}; it is Open again.${reason ? ` Reason: ${reason}` : ""}`,
+        type: "task_closure_rejected", entityType: "Task", entityId: id, dashboardId: t.dashboard_id
+      }, userId);
 
   await logAudit({
     entityType: "Task",
     entityId: id,
     changedBy: userId,
-    oldValue: { status: "Closed Pending Approval" },
-    newValue: { status: "Closed Accepted", closure_approved_by: userId }
+    oldValue: { status: t.status },
+    newValue: action === "approve"
+      ? { status: "Closed Accepted", closure_approved_by: userId }
+      : { status: "Open", closure_rejected_by: userId, reason: reason || undefined }
   });
+  return { status: 200 };
+}
 
+router.post("/:id/approve", async (req, res) => {
+  const r = await decideClosure(req.params.id, req.session.userId!, "approve");
+  if (r.status !== 200) return res.status(r.status).json({ error: r.error });
   res.json({ ok: true });
+});
+
+router.post("/:id/reject-closure", async (req, res) => {
+  const reason = String((req.body as any)?.reason ?? "").trim().slice(0, 1000);
+  const r = await decideClosure(req.params.id, req.session.userId!, "reject", reason);
+  if (r.status !== 200) return res.status(r.status).json({ error: r.error });
+  res.json({ ok: true });
+});
+
+// Approve or reject several closure requests at once (Pending Approvals bulk actions).
+router.post("/closure-decisions", async (req, res) => {
+  const { ids, action, reason } = req.body as { ids?: string[]; action?: string; reason?: string };
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 200) return res.status(400).json({ error: "Select 1–200 tasks" });
+  if (action !== "approve" && action !== "reject") return res.status(400).json({ error: "action must be approve or reject" });
+  const results: { id: string; ok: boolean; error?: string }[] = [];
+  for (const id of [...new Set(ids)]) {
+    const r = await decideClosure(id, req.session.userId!, action, String(reason ?? "").trim().slice(0, 1000));
+    results.push({ id, ok: r.status === 200, error: r.error });
+  }
+  const done = results.filter((r) => r.ok).length;
+  res.json({ ok: done === results.length, done, failed: results.filter((r) => !r.ok), results });
 });
 
 router.delete("/:id", async (req, res) => {

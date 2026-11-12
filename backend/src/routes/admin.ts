@@ -38,18 +38,38 @@ Your request for access to PRISM was not approved. If you think this is a mistak
 const router = Router();
 router.use(requireAuth);
 
-// Currently logged-in users (sessions that have not expired and have a userId)
+// Users online now: signed in (unexpired session) AND actually active in the
+// last 10 minutes. Sessions roll for 7 days, so a session alone said little.
 router.get("/active-sessions", async (req, res) => {
   const role = await getUserRole(req.session.userId!);
   if (!isAdminRole(role)) return res.status(403).json({ error: "Admin only" });
 
   const { rows } = await query(
-    `SELECT DISTINCT u.id, u.name, u.email
+    `SELECT DISTINCT u.id, u.name, u.email, u.last_active_at
      FROM session s
      JOIN users u ON u.id = (s.sess->>'userId')::uuid
      WHERE s.expire > NOW()
        AND s.sess->>'userId' IS NOT NULL
+       AND u.last_active_at > now() - interval '10 minutes'
      ORDER BY u.name`
+  );
+  res.json(rows);
+});
+
+// When each user was last actually using the app (scroll/click/typing on a
+// visible page — see /activity/ping), alongside their last sign-in and how
+// many dashboards they opened in the last 7 days.
+router.get("/user-activity", async (req, res) => {
+  const role = await getUserRole(req.session.userId!);
+  if (!isAdminRole(role)) return res.status(403).json({ error: "Admin only" });
+
+  const { rows } = await query(
+    `SELECT u.id, u.name, u.email, u.role::text AS role, u.is_active,
+            u.last_active_at, u.last_login_at,
+            (SELECT count(DISTINCT v.dashboard_id)::int FROM dashboard_visits v
+              WHERE v.user_id = u.id AND v.visit_date >= current_date - 6) AS dashboards_viewed_7d
+     FROM users u
+     ORDER BY u.last_active_at DESC NULLS LAST, u.last_login_at DESC NULLS LAST, u.name`
   );
   res.json(rows);
 });

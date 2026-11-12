@@ -21,6 +21,7 @@ const TABLE_EXPORT_ORDER: TableSpec[] = [
   { name: "dashboard_access" },
   { name: "dashboard_access_requests" },
   { name: "dashboard_delete_requests" },
+  { name: "dashboard_visits" },
   { name: "categories" },
   { name: "tasks" },
   { name: "task_owners" },

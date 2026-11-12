@@ -1,47 +1,22 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.js";
-import { query } from "../db.js";
-import { getSubordinateIds } from "../services/hierarchy.js";
+import { pendingApprovalsFor } from "../services/approvals.js";
+import { listDecisions, listRisks, listTasks } from "../services/workItems.js";
 
 const router = Router();
 router.use(requireAuth);
 
 router.get("/", async (req, res) => {
   const userId = req.session.userId!;
-  const tasks = await query(
-    `SELECT t.*,
-            COALESCE(
-              (SELECT array_agg(tow.user_id ORDER BY tow.user_id)
-               FROM task_owners tow WHERE tow.task_id = t.id),
-              ARRAY[t.owner_id]
-            ) as owner_ids,
-            COALESCE(
-              (SELECT array_agg(tg.tag ORDER BY tg.tag)
-               FROM task_tags tg WHERE tg.task_id = t.id),
-              ARRAY[]::text[]
-            ) as tags
-     FROM tasks t
-     WHERE t.is_archived = false AND (t.owner_id = $1 OR t.created_by = $1)`,
-    [userId]
-  );
-  const risks = await query(`SELECT * FROM risks WHERE is_archived = false AND risk_owner = $1`, [userId]);
-  const decisions = await query(`SELECT * FROM decisions WHERE is_archived = false AND (decision_owner = $1 OR created_by = $1)`, [userId]);
-  const escalations = await query(`SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC`, [userId]);
-
-  const pendingApprovals = await query(
-    `SELECT t.* FROM tasks t
-     WHERE t.status = 'Closed Pending Approval'
-       AND (t.created_by = $1 OR t.created_by IN (SELECT id FROM users WHERE manager_id = $1))`,
-    [userId]
-  );
-
-  res.json({
-    tasks: tasks.rows,
-    risks: risks.rows,
-    decisions: decisions.rows,
-    escalations: escalations.rows,
-    pendingApprovals: pendingApprovals.rows
-  });
+  const [tasks, risks, decisions, pendingApprovals] = await Promise.all([
+    // Tasks I own (main or co-owner) or created.
+    listTasks(`t.owner_id = $1 OR t.created_by = $1 OR EXISTS (SELECT 1 FROM task_owners o WHERE o.task_id = t.id AND o.user_id = $1)`, [userId]),
+    listRisks(`r.risk_owner = $1`, [userId]),
+    listDecisions(`dc.decision_owner = $1 OR dc.created_by = $1`, [userId]),
+    // Only closures waiting on *me*: tasks I created (approval is the creator's call).
+    pendingApprovalsFor(userId, "t.created_by = $1", [])
+  ]);
+  res.json({ tasks, risks, decisions, pendingApprovals });
 });
 
 export default router;

@@ -20,6 +20,7 @@ import SystemBackupsPage from "./pages/SystemBackupsPage";
 import SsoSettingsPage from "./pages/SsoSettingsPage";
 import EmailSettingsPage from "./pages/EmailSettingsPage";
 import Sidebar from "./components/Sidebar";
+import { useActivityPing } from "./lib/useActivityPing";
 
 export type User = {
   id: string;
@@ -52,6 +53,7 @@ export default function App() {
   }, []);
 
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
+  useActivityPing(!!user);
 
   useEffect(() => {
     if (!isAdmin) return;

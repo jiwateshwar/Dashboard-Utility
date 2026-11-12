@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { RequestUpdateButton } from "../components/RequestUpdateButton";
+import { EscalatedToYou } from "../components/EscalatedToYou";
 
 export default function EscalationRulesPage() {
   const [dashboards, setDashboards] = useState<any[]>([]);
@@ -15,8 +17,16 @@ export default function EscalationRulesPage() {
     is_active: true
   });
 
+  // Bumped after a request from the log so "Escalated to you" reloads.
+  const [mineKey, setMineKey] = useState(0);
+  const loadMine = () => setMineKey((k) => k + 1);
+  const loadLogs = () => {
+    if (selectedDashboard) api(`/escalations/logs?dashboard_id=${selectedDashboard}`).then(setLogs).catch(() => setLogs([]));
+  };
+
   useEffect(() => {
-    api("/dashboards").then(setDashboards).catch(() => setDashboards([]));
+    // Only dashboards the user can manage rules for (owner/admin); others just see "Escalated to you".
+    api("/dashboards").then((ds: any[]) => setDashboards(ds.filter((d) => d.is_owner || d.has_access))).catch(() => setDashboards([]));
   }, []);
 
   useEffect(() => {
@@ -60,10 +70,15 @@ export default function EscalationRulesPage() {
     setRules(updated);
   }
 
+
   return (
     <div>
-      <h1>Escalation Rules</h1>
+      <h1>Escalations</h1>
       {error && <div style={{ color: "#ef6a62", marginBottom: 12 }}>{error}</div>}
+
+      <EscalatedToYou key={mineKey} />
+
+      <h2 style={{ fontSize: 16, margin: "8px 0 12px" }}>Rules & log by dashboard <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 400 }}>(dashboard owners and admins)</span></h2>
       <div className="card" style={{ marginBottom: 24 }}>
         <div className="form-row">
           <select className="select" value={selectedDashboard} onChange={(e) => setSelectedDashboard(e.target.value)}>
@@ -124,15 +139,17 @@ export default function EscalationRulesPage() {
         <h3>Escalation Log</h3>
         <table className="table">
           <thead>
-            <tr><th>Entity</th><th>Rule</th><th>Message</th><th>At</th></tr>
+            <tr><th>Item</th><th>Rule</th><th>Message</th><th>Waiting on</th><th>At</th><th></th></tr>
           </thead>
           <tbody>
             {logs.map((l) => (
               <tr key={l.id}>
-                <td>{l.entity_type}</td>
+                <td><div style={{ fontWeight: 500 }}>{l.label ?? "—"}</div><div style={{ fontSize: 12, color: "var(--muted)" }}>{l.entity_type}{l.entity_status ? ` · ${l.entity_status}` : ""}</div></td>
                 <td>{l.rule_name}</td>
                 <td>{l.message}</td>
-                <td>{l.created_at}</td>
+                <td>{(l.pending ?? []).map((p: any) => p.name).join(", ") || "—"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{new Date(l.created_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
+                <td><RequestUpdateButton escalation={l} onDone={() => { loadLogs(); loadMine(); }} /></td>
               </tr>
             ))}
           </tbody>

@@ -6,6 +6,15 @@ export default function DashboardsPage() {
   const [dashboards, setDashboards] = useState<any[]>([]);
   const [requesting, setRequesting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Subscribed = you own it or were given access to it (admins can open every
+  // dashboard, but only the ones they own or were added to are "subscribed").
+  const [tab, setTab] = useState<"subscribed" | "other">(() => {
+    try { return localStorage.getItem("prism.dashboardsTab") === "other" ? "other" : "subscribed"; } catch { return "subscribed"; }
+  });
+  function chooseTab(t: "subscribed" | "other") {
+    setTab(t);
+    try { localStorage.setItem("prism.dashboardsTab", t); } catch { /* ignore */ }
+  }
 
   async function load() {
     try {
@@ -35,7 +44,11 @@ export default function DashboardsPage() {
   const grouped: Record<string, any[]> = {};
   const ungrouped: any[] = [];
 
-  for (const d of dashboards) {
+  const subscribed = dashboards.filter((d) => d.is_subscribed);
+  const notSubscribed = dashboards.filter((d) => !d.is_subscribed);
+  const visible = tab === "subscribed" ? subscribed : notSubscribed;
+
+  for (const d of visible) {
     if (d.group_name) {
       if (!grouped[d.group_name]) grouped[d.group_name] = [];
       grouped[d.group_name].push(d);
@@ -60,7 +73,7 @@ export default function DashboardsPage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
             <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 15 }}>{d.name}</h3>
             <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(46,189,133,0.12)", color: "#2ebd85", fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>
-              Access
+              {d.is_owner ? "Owner" : d.is_subscribed ? "Subscribed" : "Admin access"}
             </span>
           </div>
           <div style={{ color: "var(--muted)", fontSize: 13, marginBottom: 4 }}>{d.description || "No description"}</div>
@@ -103,7 +116,7 @@ export default function DashboardsPage() {
         <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--muted)", marginBottom: 10, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
           {name}
           <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-            ({items.filter((d) => d.has_access).length}/{items.length} accessible)
+            ({items.length})
           </span>
         </div>
         <div className="grid two">
@@ -113,20 +126,31 @@ export default function DashboardsPage() {
     );
   }
 
-  const total = dashboards.length;
-  const accessible = dashboards.filter((d) => d.has_access).length;
-
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <h1 style={{ margin: 0 }}>Dashboards</h1>
-        <span style={{ fontSize: 13, color: "var(--muted)" }}>{accessible} of {total} accessible</span>
+      </div>
+
+      <div className="tab-bar">
+        <button className={`tab${tab === "subscribed" ? " active" : ""}`} onClick={() => chooseTab("subscribed")}>
+          Subscribed ({subscribed.length})
+        </button>
+        <button className={`tab${tab === "other" ? " active" : ""}`} onClick={() => chooseTab("other")}>
+          Not Subscribed ({notSubscribed.length})
+        </button>
       </div>
 
       {error && <div style={{ color: "#ef6a62", marginBottom: 12, fontSize: 13 }}>{error}</div>}
 
-      {dashboards.length === 0 ? (
-        <div className="card" style={{ color: "var(--muted)", textAlign: "center", padding: 40 }}>No dashboards found</div>
+      {visible.length === 0 ? (
+        <div className="card" style={{ color: "var(--muted)", textAlign: "center", padding: 40 }}>
+          {dashboards.length === 0
+            ? "No dashboards found"
+            : tab === "subscribed"
+              ? "You aren't subscribed to any dashboards yet. Open the Not Subscribed tab to request access."
+              : "You're subscribed to every dashboard."}
+        </div>
       ) : (
         <>
           {groupNames.map((name) => (

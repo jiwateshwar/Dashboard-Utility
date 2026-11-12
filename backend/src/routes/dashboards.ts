@@ -102,7 +102,12 @@ router.get("/", async (req, res) => {
 
   res.json(rows.map((r) => ({
     ...r,
-    has_access: isAdmin || r.is_owner || r.has_view_access
+    has_access: isAdmin || r.is_owner || r.has_view_access,
+    // Subscribed = owner or explicitly given access (admins can open every
+    // dashboard but aren't subscribed to all of them). Same rule as the
+    // weekly visitor report's recipients.
+    is_subscribed: r.is_owner || r.has_view_access
+      || r.primary_owner_id === userId || r.secondary_owner_id === userId
   })));
 });
 
@@ -396,6 +401,15 @@ router.get("/:id", async (req, res) => {
     [id, isAdminRole(role), userId]
   );
   if (!rows[0]) return res.status(404).json({ error: "Not found" });
+  // Site analytics: one row per user per dashboard per day (see dashboard_visits).
+  // Best effort — never fail the page load over it.
+  await query(
+    `INSERT INTO dashboard_visits (dashboard_id, user_id, visit_date)
+     VALUES ($1, $2, (now() AT TIME ZONE $3)::date)
+     ON CONFLICT (dashboard_id, user_id, visit_date)
+     DO UPDATE SET view_count = dashboard_visits.view_count + 1, last_seen_at = now()`,
+    [id, userId, process.env.NOTIFY_TZ || "Asia/Kolkata"]
+  ).catch((err) => console.error("[analytics] visit not recorded:", err?.message ?? err));
   res.json(rows[0]);
 });
 

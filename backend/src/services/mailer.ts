@@ -17,6 +17,8 @@ export const EMAIL_CATEGORIES = {
   admin_requests: { label: "Admin requests", description: "New signup, account and dashboard-delete requests (admins only)", mandatory: false, instant: true },
   daily_digest: { label: "Daily digest", description: "Weekday morning summary: overdue, due soon, waiting on you, escalations", mandatory: false, instant: false },
   weekly_summary: { label: "Weekly summary", description: "Monday summary of your dashboards, your team and (admins) pending queues", mandatory: false, instant: false },
+  update_requests: { label: "Update requests", description: "Your manager or a dashboard owner asks you for an update on an escalated item", mandatory: true, instant: true },
+  dashboard_analytics: { label: "Dashboard visitor report", description: "Monday report of how many people viewed the dashboards you own or have access to", mandatory: false, instant: false },
   publishing: { label: "Publishing cycle", description: "Reminder before the 15th / month-end publishing cycle, and when child dashboards are published", mandatory: false, instant: false },
   system: { label: "System alerts", description: "Scheduled job failures (SuperAdmins only)", mandatory: true, instant: true },
   account: { label: "Account access", description: "Your signup request was approved or rejected", mandatory: true, instant: true }
@@ -61,7 +63,7 @@ function fromHeader(s: EmailSettings) {
   return { name: s.fromName || "PRISM", address: s.fromAddress! };
 }
 
-type Message = { to: string; subject: string; html: string; text: string };
+type Message = { to: string; cc?: string[]; replyTo?: string; subject: string; html: string; text: string };
 
 /** Microsoft Graph sendMail as the From mailbox (needs Mail.Send application permission). */
 async function sendViaGraph(s: EmailSettings, m: Message): Promise<void> {
@@ -73,7 +75,9 @@ async function sendViaGraph(s: EmailSettings, m: Message): Promise<void> {
       message: {
         subject: m.subject,
         body: { contentType: "HTML", content: m.html },
-        toRecipients: [{ emailAddress: { address: m.to } }],
+        toRecipients: m.to.split(",").map((a) => a.trim()).filter(Boolean).map((address) => ({ emailAddress: { address } })),
+        ...(m.cc?.length ? { ccRecipients: m.cc.map((address) => ({ emailAddress: { address } })) } : {}),
+        ...(m.replyTo ? { replyTo: [{ emailAddress: { address: m.replyTo } }] } : {}),
         from: { emailAddress: { address: s.fromAddress, name: s.fromName || "PRISM" } }
       },
       saveToSentItems: false
@@ -92,7 +96,8 @@ async function sendViaGraph(s: EmailSettings, m: Message): Promise<void> {
 
 async function deliver(s: EmailSettings, m: Message): Promise<void> {
   if (s.transport === "graph") return sendViaGraph(s, m);
-  await getTransport(s).sendMail({ from: fromHeader(s), ...m });
+  const { cc, replyTo, ...rest } = m;
+  await getTransport(s).sendMail({ from: fromHeader(s), ...rest, ...(cc?.length ? { cc } : {}), ...(replyTo ? { replyTo } : {}) });
 }
 
 /** Sends immediately, bypassing the outbox. Only for the settings-page test. */
@@ -172,17 +177,21 @@ export type OutgoingEmail = {
   html: string;
   text: string;
   dedupeKey?: string;
+  /** Extra recipients, e.g. a manager copied on an update request. */
+  cc?: string[];
+  /** Where replies go (the From mailbox is no-reply). */
+  replyTo?: string;
 };
 
 /** Queues an email. No-op while email is not live. Returns false if deduped/skipped. */
 export async function enqueueEmail(e: OutgoingEmail): Promise<boolean> {
   if (!(await isEmailLive())) return false;
   const { rows } = await query(
-    `INSERT INTO email_outbox (to_email, user_id, category, subject, html, text_body, dedupe_key)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO email_outbox (to_email, user_id, category, subject, html, text_body, dedupe_key, cc_emails, reply_to)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
      RETURNING id`,
-    [e.to, e.userId ?? null, e.category, e.subject.startsWith("[PRISM]") ? e.subject : `[PRISM] ${e.subject}`, e.html, e.text, e.dedupeKey ?? null]
+    [e.to, e.userId ?? null, e.category, e.subject.startsWith("[PRISM]") ? e.subject : `[PRISM] ${e.subject}`, e.html, e.text, e.dedupeKey ?? null, e.cc?.length ? e.cc : null, e.replyTo ?? null]
   );
   return rows.length > 0;
 }
@@ -245,14 +254,14 @@ export async function processOutbox(): Promise<void> {
          LIMIT $1
          FOR UPDATE SKIP LOCKED
        )
-       RETURNING id, to_email, subject, html, text_body, attempts`,
+       RETURNING id, to_email, cc_emails, reply_to, subject, html, text_body, attempts`,
       [BATCH_PER_RUN]
     );
     if (rows.length === 0) return;
 
     for (const m of rows) {
       try {
-        await deliver(s, { to: m.to_email, subject: m.subject, html: m.html, text: m.text_body });
+        await deliver(s, { to: m.to_email, cc: m.cc_emails ?? undefined, replyTo: m.reply_to ?? undefined, subject: m.subject, html: m.html, text: m.text_body });
         await query(`UPDATE email_outbox SET status = 'sent', sent_at = now(), attempts = attempts + 1, last_error = NULL WHERE id = $1`, [m.id]);
       } catch (err: any) {
         const attempts = m.attempts + 1;

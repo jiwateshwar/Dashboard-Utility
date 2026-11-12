@@ -63,7 +63,7 @@ export default function Sidebar({ user }: { user: User }) {
         Publishing
       </NavLink>
       <NavLink className="nav-item" to="/escalations">
-        Escalation Rules
+        Escalations
       </NavLink>
       <NavLink className="nav-item" to="/audit">
         Audit Log

@@ -23,6 +23,8 @@ import shareTeamsRouter from "./shareTeams.js";
 import dbSnapshotsRouter from "./dbSnapshots.js";
 import ssoRouter from "./sso.js";
 import emailRouter from "./email.js";
+import activityRouter from "./activity.js";
+import analyticsRouter from "./analytics.js";
 
 export const router = Router();
 
@@ -50,3 +52,5 @@ router.use("/share-teams", shareTeamsRouter);
 router.use("/db-snapshots", dbSnapshotsRouter);
 router.use("/sso", ssoRouter);
 router.use("/email", emailRouter);
+router.use("/activity", activityRouter);
+router.use("/analytics", analyticsRouter);

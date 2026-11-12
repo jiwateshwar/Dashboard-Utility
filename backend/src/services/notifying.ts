@@ -9,6 +9,9 @@ export type NotificationType =
   | "task_status_changed"
   | "task_closure_requested"
   | "task_closure_approved"
+  | "task_closure_auto_approved"
+  | "task_closure_rejected"
+  | "update_requested"
   | "task_overdue"
   | "dashboard_assigned"
   | "decision_assigned"
@@ -36,6 +39,8 @@ const EMAIL_ROUTING: Partial<Record<NotificationType, { category: EmailCategory;
   decision_pending: { category: "approvals", subject: "New decision pending approval", cta: "Review decision" },
   access_requested: { category: "approvals", subject: "Dashboard access request", cta: "Review request" },
   task_closure_approved: { category: "outcomes", subject: "Task closure approved", cta: "View task" },
+  task_closure_rejected: { category: "outcomes", subject: "Task closure rejected — task reopened", cta: "View task" },
+  task_closure_auto_approved: { category: "outcomes", subject: "Task closed automatically (no approval in 3 weeks)", cta: "View task" },
   decision_approved: { category: "outcomes", subject: "Decision approved", cta: "View decision" },
   access_reviewed: { category: "outcomes", subject: "Your access request was reviewed", cta: "Open PRISM" },
   delete_reviewed: { category: "outcomes", subject: "Your delete request was reviewed", cta: "Open PRISM" },

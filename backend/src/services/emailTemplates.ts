@@ -110,8 +110,11 @@ export function renderEmail(params: {
   /** Why the user is getting this email; shown in the footer. */
   reason?: string;
   showPrefsLink?: boolean;
+  /** Replaces the "please do not reply" footer line, e.g. when Reply-To is a real person. */
+  replyNote?: string;
 }): { html: string; text: string } {
-  const { heading, intro, sections = [], tables = [], ctaUrl, ctaLabel, baseUrl, reason, showPrefsLink = true } = params;
+  const { heading, intro, sections = [], tables = [], ctaUrl, ctaLabel, baseUrl, reason, showPrefsLink = true, replyNote } = params;
+  const footerLine = replyNote ?? "Sent by PRISM — please do not reply to this email.";
 
   const introHtml = intro
     ? intro.split("\n").map((p) => `<p style="font-size:14px;line-height:1.5;margin:0 0 12px 0;">${esc(p)}</p>`).join("")
@@ -136,7 +139,7 @@ export function renderEmail(params: {
     ${tables.map(tableHtml).join("")}
     ${sections.map(sectionHtml).join("")}
     <div style="font-size:11px;color:${MUTED};text-align:center;margin-top:18px;line-height:1.6;">
-      ${reason ? `${esc(reason)}<br>` : ""}Sent by PRISM — please do not reply to this email.${prefs}
+      ${reason ? `${esc(reason)}<br>` : ""}${esc(footerLine)}${prefs}
     </div>
   </div>
 </body></html>`;
@@ -162,7 +165,7 @@ export function renderEmail(params: {
   }
   if (ctaUrl) lines.push(`${ctaLabel ?? "Open in PRISM"}: ${ctaUrl}`, "");
   if (reason) lines.push(reason);
-  lines.push("Sent by PRISM — please do not reply.");
+  lines.push(footerLine);
   if (showPrefsLink) lines.push(`Email preferences: ${baseUrl}/profile`);
 
   return { html, text: lines.join("\n") };

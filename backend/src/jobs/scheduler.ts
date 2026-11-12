@@ -1,6 +1,8 @@
 import cron from "node-cron";
 import dayjs from "dayjs";
 import { runArchival } from "../services/archiver.js";
+import { autoCloseStaleClosureRequests } from "../services/autoClose.js";
+import { sendDashboardVisitorReports } from "../services/analytics.js";
 import { runEscalations } from "../services/escalation.js";
 import { notifyOverdueTasks } from "../services/overdueNotifier.js";
 import { query } from "../db.js";
@@ -47,6 +49,7 @@ async function runPublishingCycle() {
 }
 
 cron.schedule("0 2 * * *", async () => {
+  await step("Auto-close stale closure requests", autoCloseStaleClosureRequests);
   await step("Archival", runArchival);
   await step("Escalations", runEscalations);
   await step("Overdue reminders", notifyOverdueTasks);
@@ -83,6 +86,7 @@ cron.schedule(
   "0 9 * * 1",
   async () => {
     await step("Weekly summary", () => sendWeeklySummaries());
+    await step("Dashboard visitor reports", () => sendDashboardVisitorReports());
   },
   { timezone: NOTIFY_TZ }
 );

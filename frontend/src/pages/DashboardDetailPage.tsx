@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 import { ComboBox } from "../components/ComboBox";
@@ -8,7 +8,6 @@ import { TaskFilterBar } from "../components/TaskFilterBar";
 import { HashtagChips } from "../components/HashtagChips";
 import { formatWeekLabel } from "../lib/weeks";
 
-type Mode = "view" | "edit";
 
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
@@ -74,7 +73,7 @@ const EMPTY_DECISION = {
 
 export default function DashboardDetailPage() {
   const { id } = useParams();
-  const [mode, setMode] = useState<Mode>("view");
+  const [visitors, setVisitors] = useState<{ week_start: string; unique_visitors: number }[] | null>(null);
   const [dashboard, setDashboard] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -142,6 +141,13 @@ export default function DashboardDetailPage() {
       .catch((err: any) => setError(err.message || "Failed to load"));
   }, [id, showArchived]);
 
+  // Unique visitors this week vs last (site analytics). Loaded after the
+  // dashboard itself, so this visit is already counted.
+  useEffect(() => {
+    if (!id || !dashboard) return;
+    api(`/analytics/dashboards/${id}?weeks=2`).then((r: any) => setVisitors(r.weeks)).catch(() => setVisitors(null));
+  }, [id, dashboard?.id]);
+
   const accountOptions = useMemo(() => accounts.filter((a) => a.is_active !== false), [accounts]);
   const categoryOptions = useMemo(() => categories.filter((c) => c.is_active !== false), [categories]);
 
@@ -162,6 +168,11 @@ export default function DashboardDetailPage() {
     return Array.isArray(t.owner_ids) ? t.owner_ids.includes(me.id) : t.owner_id === me.id;
   };
   // Only the task's creator (or an admin) may accept its closure — mirrors the server-side check.
+  // Dashboard settings (access requests, categories, deletion) — owners and admins.
+  const canManageDashboard = !!me && (
+    me.role === "Admin" || me.role === "SuperAdmin" ||
+    !!dashboard?.is_owner || dashboard?.primary_owner_id === me.id || dashboard?.secondary_owner_id === me.id
+  );
   const canApprove = (t: any): boolean => {
     if (!me) return false;
     if (me.role === "Admin" || me.role === "SuperAdmin") return true;
@@ -442,12 +453,9 @@ export default function DashboardDetailPage() {
     );
   }
 
-  // Manage-tab task row — shared by the per-category groups and the "Uncategorised" group
-  // so both render the same edit-in-place form (previously only the categorised group did).
-  function renderTaskManageRow(t: any) {
+  // Inline edit panels — opened by a row's Edit button and shown directly under that row.
+  function renderTaskEditForm(t: any) {
     return (
-      <div key={t.id} style={{ borderTop: "1px solid var(--border)" }}>
-        {editingTaskId === t.id ? (
           <div style={{ padding: "14px 0" }}>
             <div className="form-row">
               <select className="select" value={taskEditForm.category_id} onChange={(e) => setTaskEditForm({ ...taskEditForm, category_id: e.target.value })}>
@@ -507,25 +515,90 @@ export default function DashboardDetailPage() {
               <button className="button danger" onClick={() => deleteTask(t.id)}>Delete</button>
             </div>
           </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-              <div style={{ fontSize: 13, marginBottom: 3 }}>{t.item_details}</div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
-                {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              <AgingChip targetDate={t.target_date} status={t.status} />
-              <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-              <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditTask(t)}>Edit</button>
-              <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteTask(t.id)}>Delete</button>
-            </div>
-          </div>
-        )}
-      </div>
+    );
+  }
+
+  function renderRiskEditForm(r: any) {
+    return (
+                  <div style={{ padding: "14px 0" }}>
+                    <input className="input" placeholder="Risk title" value={riskEditForm.risk_title}
+                      onChange={(e) => setRiskEditForm({ ...riskEditForm, risk_title: e.target.value })} style={{ marginBottom: 8 }} />
+                    <textarea className="input" rows={2} placeholder="Description" value={riskEditForm.risk_description}
+                      onChange={(e) => setRiskEditForm({ ...riskEditForm, risk_description: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
+                    <textarea className="input" rows={2} placeholder="Mitigation plan" value={riskEditForm.mitigation_plan}
+                      onChange={(e) => setRiskEditForm({ ...riskEditForm, mitigation_plan: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
+                    <div className="form-row">
+                      <select className="select" value={riskEditForm.account_id} onChange={(e) => setRiskEditForm({ ...riskEditForm, account_id: e.target.value })}>
+                        <option value="">Account</option>
+                        {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+                      </select>
+                      <select className="select" value={riskEditForm.risk_owner} onChange={(e) => setRiskEditForm({ ...riskEditForm, risk_owner: e.target.value })}>
+                        <option value="">Owner</option>
+                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                      <select className="select" value={riskEditForm.impact_level} onChange={(e) => setRiskEditForm({ ...riskEditForm, impact_level: e.target.value })}>
+                        <option value="Low">Low</option><option value="Medium">Medium</option>
+                        <option value="High">High</option><option value="Critical">Critical</option>
+                      </select>
+                      <select className="select" value={riskEditForm.probability} onChange={(e) => setRiskEditForm({ ...riskEditForm, probability: e.target.value })}>
+                        <option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option>
+                      </select>
+                      <select className="select" value={riskEditForm.status} onChange={(e) => setRiskEditForm({ ...riskEditForm, status: e.target.value })}>
+                        <option value="Open">Open</option><option value="Mitigated">Mitigated</option><option value="Closed">Closed</option>
+                      </select>
+                      <input className="input" type="date" value={riskEditForm.target_mitigation_date}
+                        onChange={(e) => setRiskEditForm({ ...riskEditForm, target_mitigation_date: e.target.value })} />
+                    </div>
+                    <div className="inline-actions" style={{ marginTop: 8 }}>
+                      <label style={{ fontSize: 13, cursor: "pointer" }}>
+                        <input type="checkbox" checked={riskEditForm.publish_flag} onChange={(e) => setRiskEditForm({ ...riskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
+                        Publish
+                      </label>
+                      <button className="button" onClick={() => saveRisk(r.id)}>Save</button>
+                      <button className="button secondary" onClick={() => setEditingRiskId(null)}>Cancel</button>
+                      <button className="button danger" onClick={() => deleteRisk(r.id)}>Delete</button>
+                    </div>
+                  </div>
+    );
+  }
+
+  function renderDecisionEditForm(d: any) {
+    return (
+                  <div style={{ padding: "14px 0" }}>
+                    <input className="input" placeholder="Decision title" value={decisionEditForm.decision_title}
+                      onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_title: e.target.value })} style={{ marginBottom: 8 }} />
+                    <textarea className="input" rows={2} placeholder="Context / background" value={decisionEditForm.decision_context}
+                      onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_context: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
+                    <div className="form-row">
+                      <select className="select" value={decisionEditForm.account_id} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, account_id: e.target.value })}>
+                        <option value="">Account</option>
+                        {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+                      </select>
+                      <select className="select" value={decisionEditForm.decision_owner} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_owner: e.target.value })}>
+                        <option value="">Owner</option>
+                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                      <input className="input" type="date" value={decisionEditForm.decision_deadline}
+                        onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_deadline: e.target.value })} />
+                      <input className="input" placeholder="Impact area" value={decisionEditForm.impact_area}
+                        onChange={(e) => setDecisionEditForm({ ...decisionEditForm, impact_area: e.target.value })} />
+                      <select className="select" value={decisionEditForm.status} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, status: e.target.value })}>
+                        <option value="Pending">Pending</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="Deferred">Deferred</option>
+                      </select>
+                    </div>
+                    <div className="inline-actions" style={{ marginTop: 8 }}>
+                      <label style={{ fontSize: 13, cursor: "pointer" }}>
+                        <input type="checkbox" checked={decisionEditForm.publish_flag} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
+                        Publish
+                      </label>
+                      <button className="button" onClick={() => saveDecision(d.id)}>Save</button>
+                      <button className="button secondary" onClick={() => setEditingDecisionId(null)}>Cancel</button>
+                      <button className="button danger" onClick={() => deleteDecision(d.id)}>Delete</button>
+                    </div>
+                  </div>
     );
   }
 
@@ -579,159 +652,33 @@ export default function DashboardDetailPage() {
               <div className="kpi-value" style={{ color: "#6366f1" }}>{summary.healthScore}</div>
               <div className="kpi-label">Health Score</div>
             </div>
+            {visitors && visitors.length === 2 && (
+              <div className="kpi-card" title={`Unique people who opened this dashboard. Last week: ${visitors[0].unique_visitors}`}>
+                <div className="kpi-value" style={{ color: "#0ea5e9" }}>{visitors[1].unique_visitors}</div>
+                <div className="kpi-label">Visitors This Week <span style={{ opacity: 0.7 }}>(last wk {visitors[0].unique_visitors})</span></div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Mode tabs */}
-      <div className="tab-bar">
-        <button className={`tab${mode === "view" ? " active" : ""}`} onClick={() => setMode("view")}>Overview</button>
-        <button className={`tab${mode === "edit" ? " active" : ""}`} onClick={() => setMode("edit")}>Manage</button>
+      {/* One view: read the tables, use Edit on a row to change it or its status. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", margin: "12px 0" }}>
+        <label style={{ fontSize: 13, color: "var(--muted)", cursor: "pointer" }}>
+          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} style={{ marginRight: 6 }} />
+          Show archived items
+        </label>
       </div>
 
-      {/* ── VIEW MODE ── */}
-      {mode === "view" && (
-        <>
-          {/* Tasks — filterable/sortable table (own + inherited-published, matching the source rows already returned by GET /tasks) */}
-          <TaskFilterBar tasks={tasks} users={users} accounts={accounts} onFilteredChange={setDisplayedTasks} />
-          <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>Tasks</h3>
-              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                {displayedTasks.length} {displayedTasks.length === 1 ? "item" : "items"}
-              </span>
-            </div>
-            {displayedTasks.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 13 }}>No tasks match the current filters</div>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Category</th><th>Task</th><th>Account</th><th>Owner(s)</th><th>Created By</th>
-                    <th>Due</th><th>Focus Week</th><th>Hashtags</th><th>Status</th>
-                    {hasInherited && <th>Source</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedTasks.map((t) => (
-                    <tr key={t.id}>
-                      <td>{catName(t.category_id)}</td>
-                      <td>
-                        {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
-                        <div>{t.item_details}</div>
-                      </td>
-                      <td>{acctName(t.account_id)}</td>
-                      <td>{ownerNames(t)}</td>
-                      <td>{ownerName(t.created_by)}</td>
-                      <td>
-                        <div>{fmt(t.target_date)}</div>
-                        <AgingChip targetDate={t.target_date} status={t.status} />
-                      </td>
-                      <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
-                      <td><HashtagChips tags={t.tags} /></td>
-                      <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
-                      {hasInherited && <td>{t.source_dashboard_id !== id ? <SourceBadge name={t.source_dashboard_name} /> : null}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Decisions — read-only */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>Decisions</h3>
-              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{decisions.length} {decisions.length === 1 ? "item" : "items"}</span>
-            </div>
-            {decisions.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 13 }}>No decisions</div>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Impact Area</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
-                </thead>
-                <tbody>
-                  {decisions.map((d) => (
-                    <tr key={d.id}>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>{d.decision_title}</div>
-                        {d.decision_context && <div style={{ color: "var(--muted)", fontSize: 12 }}>{d.decision_context}</div>}
-                      </td>
-                      <td>{acctName(d.account_id)}</td>
-                      <td>{ownerName(d.decision_owner)}</td>
-                      <td>
-                        <div>{fmt(d.decision_deadline)}</div>
-                        {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
-                      </td>
-                      <td>{d.impact_area || "—"}</td>
-                      <td><span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span></td>
-                      {hasInherited && <td>{d.source_dashboard_id !== id ? <SourceBadge name={d.source_dashboard_name} /> : null}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Risks — read-only */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>Risks</h3>
-              <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{risks.length} {risks.length === 1 ? "item" : "items"}</span>
-            </div>
-            {risks.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 13 }}>No risks</div>
-            ) : (
-              <table className="table">
-                <thead>
-                  <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Probability</th><th>Mitigation Target</th><th>Status</th>{hasInherited && <th>Source</th>}</tr>
-                </thead>
-                <tbody>
-                  {risks.map((r) => (
-                    <tr key={r.id}>
-                      <td>
-                        <div style={{ fontWeight: 500 }}>{r.risk_title}</div>
-                        {r.risk_description && <div style={{ color: "var(--muted)", fontSize: 12 }}>{r.risk_description}</div>}
-                      </td>
-                      <td>{acctName(r.account_id)}</td>
-                      <td>{ownerName(r.risk_owner)}</td>
-                      <td><span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span></td>
-                      <td>{r.probability}</td>
-                      <td>
-                        <div>{fmt(r.target_mitigation_date)}</div>
-                        {r.status !== "Closed" && r.status !== "Mitigated" && <DeadlineChip deadline={r.target_mitigation_date} />}
-                      </td>
-                      <td><span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span></td>
-                      {hasInherited && <td>{r.source_dashboard_id !== id ? <SourceBadge name={r.source_dashboard_name} /> : null}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* ── MANAGE MODE ── */}
-      {mode === "edit" && (
-        <>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, color: "var(--muted)", cursor: "pointer" }}>
-              <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} style={{ marginRight: 6 }} />
-              Show archived items
-            </label>
-          </div>
-
-          {/* ── TASKS ── */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ margin: 0 }}>Tasks</h3>
-              <button className="button" onClick={() => { setShowCreateTask((v) => !v); setEditingTaskId(null); setProposedAccountName(""); }}>
-                {showCreateTask ? "Cancel" : "+ Add Task"}
-              </button>
-            </div>
-
+      {/* ── TASKS ── */}
+      <TaskFilterBar tasks={tasks} users={users} accounts={accounts} onFilteredChange={setDisplayedTasks} />
+      <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Tasks <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{displayedTasks.length} {displayedTasks.length === 1 ? "item" : "items"}</span></h3>
+          <button className="button" onClick={() => { setShowCreateTask((v) => !v); setEditingTaskId(null); setProposedAccountName(""); }}>
+            {showCreateTask ? "Cancel" : "+ Add Task"}
+          </button>
+        </div>
             {showCreateTask && (
               <div className="inline-create-panel" style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>New Task</div>
@@ -780,77 +727,139 @@ export default function DashboardDetailPage() {
                 </div>
               </div>
             )}
-
-            {ownTasks.length === 0 && !showCreateTask && inheritedTasks.length === 0 && (
-              <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No tasks yet.</div>
-            )}
-
-            {/* Group own tasks by category */}
-            {categoryOptions.map((cat) => {
-              const catTasks = ownTasks.filter((t) => t.category_id === cat.id);
-              if (catTasks.length === 0) return null;
-              return (
-                <div key={cat.id}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", padding: "10px 0 4px", letterSpacing: "0.06em" }}>
-                    {cat.name}
-                  </div>
-                  {catTasks.map(renderTaskManageRow)}
-                </div>
-              );
-            })}
-
-            {/* Uncategorised own tasks (category not matching any active category) */}
-            {(() => {
-              const activeCatIds = new Set(categoryOptions.map((c) => c.id));
-              const uncategorised = ownTasks.filter((t) => !activeCatIds.has(t.category_id));
-              if (uncategorised.length === 0) return null;
-              return (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--muted)", padding: "10px 0 4px", letterSpacing: "0.06em" }}>
-                    Uncategorised
-                  </div>
-                  {uncategorised.map(renderTaskManageRow)}
-                </div>
-              );
-            })()}
-
-            {inheritedTasks.length > 0 && (
-              <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                  Inherited from child dashboards
-                </div>
-                {inheritedTasks.map((t) => (
-                  <div key={t.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        {t.title && <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{t.title}</div>}
-                        <div style={{ fontSize: t.title ? 13 : 14, fontWeight: t.title ? 400 : 500, marginBottom: 3 }}>{t.item_details}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                          {catName(t.category_id)} &nbsp;·&nbsp; {acctName(t.account_id)} &nbsp;·&nbsp; {ownerNames(t)}
-                          {t.target_date && <> &nbsp;·&nbsp; Due {fmt(t.target_date)}</>}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {displayedTasks.length === 0 ? (
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>{tasks.length === 0 ? "No tasks yet." : "No tasks match the current filters"}</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Category</th><th>Task</th><th>Account</th><th>Owner(s)</th><th>Created By</th>
+                <th>Due</th><th>Focus Week</th><th>Hashtags</th><th>Status</th>
+                {hasInherited && <th>Source</th>}
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayedTasks.map((t) => {
+                const own = t.source_dashboard_id === id;
+                const editing = editingTaskId === t.id;
+                return (
+                  <Fragment key={t.id}>
+                    <tr style={editing ? { background: "rgba(29,99,237,0.06)" } : undefined}>
+                      <td>{own ? catName(t.category_id) : "—"}</td>
+                      <td>
+                        {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
+                        <div>{t.item_details}</div>
+                      </td>
+                      <td>{acctName(t.account_id)}</td>
+                      <td>{ownerNames(t)}</td>
+                      <td>{ownerName(t.created_by)}</td>
+                      <td>
+                        <div>{fmt(t.target_date)}</div>
                         <AgingChip targetDate={t.target_date} status={t.status} />
-                        <SourceBadge name={t.source_dashboard_name} />
-                        <span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
+                      <td><HashtagChips tags={t.tags} /></td>
+                      <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
+                      {hasInherited && <td>{!own ? <SourceBadge name={t.source_dashboard_name} /> : null}</td>}
+                      <td>{own && <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }} onClick={() => (editing ? setEditingTaskId(null) : (setShowCreateTask(false), openEditTask(t)))}>{editing ? "Close" : "Edit"}</button>}</td>
+                    </tr>
+                    {editing && (
+                      <tr><td colSpan={hasInherited ? 11 : 10} style={{ background: "rgba(29,99,237,0.03)" }}>{renderTaskEditForm(t)}</td></tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── DECISIONS ── */}
+      <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Decisions <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{decisions.length} {decisions.length === 1 ? "item" : "items"}</span></h3>
+          <button className="button" onClick={() => { setShowCreateDecision((v) => !v); setEditingDecisionId(null); }}>
+            {showCreateDecision ? "Cancel" : "+ Add Decision"}
+          </button>
+        </div>
+            {showCreateDecision && (
+              <div className="inline-create-panel" style={{ marginBottom: 14 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>New Decision</div>
+                <div className="form-row">
+                  <select className="select" value={newDecision.account_id} onChange={(e) => setNewDecision({ ...newDecision, account_id: e.target.value })}>
+                    <option value="">Account *</option>
+                    {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+                  </select>
+                  <select className="select" value={newDecision.decision_owner} onChange={(e) => setNewDecision({ ...newDecision, decision_owner: e.target.value })}>
+                    <option value="">Owner *</option>
+                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                  <input className="input" type="date" value={newDecision.decision_deadline} onChange={(e) => setNewDecision({ ...newDecision, decision_deadline: e.target.value })} />
+                  <input className="input" placeholder="Impact area" value={newDecision.impact_area} onChange={(e) => setNewDecision({ ...newDecision, impact_area: e.target.value })} />
+                </div>
+                <input className="input" placeholder="Decision title *" value={newDecision.decision_title}
+                  onChange={(e) => setNewDecision({ ...newDecision, decision_title: e.target.value })} style={{ marginBottom: 8 }} />
+                <textarea className="input" rows={2} placeholder="Context / background" value={newDecision.decision_context}
+                  onChange={(e) => setNewDecision({ ...newDecision, decision_context: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
+                <div className="inline-actions">
+                  <label style={{ fontSize: 13, cursor: "pointer" }}>
+                    <input type="checkbox" checked={newDecision.publish_flag} onChange={(e) => setNewDecision({ ...newDecision, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
+                    Publish
+                  </label>
+                  <button className="button" onClick={createDecision}>Create Decision</button>
+                  <button className="button secondary" onClick={() => setShowCreateDecision(false)}>Cancel</button>
+                </div>
               </div>
             )}
-          </div>
+        {decisions.length === 0 ? (
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>No decisions yet.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th>Decision</th><th>Account</th><th>Owner</th><th>Deadline</th><th>Impact Area</th><th>Status</th>{hasInherited && <th>Source</th>}<th></th></tr>
+            </thead>
+            <tbody>
+              {decisions.map((d) => {
+                const own = d.source_dashboard_id === id;
+                const editing = editingDecisionId === d.id;
+                return (
+                  <Fragment key={d.id}>
+                    <tr style={editing ? { background: "rgba(29,99,237,0.06)" } : undefined}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{d.decision_title}</div>
+                        {d.decision_context && <div style={{ color: "var(--muted)", fontSize: 12 }}>{d.decision_context}</div>}
+                      </td>
+                      <td>{acctName(d.account_id)}</td>
+                      <td>{ownerName(d.decision_owner)}</td>
+                      <td>
+                        <div>{fmt(d.decision_deadline)}</div>
+                        {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
+                      </td>
+                      <td>{d.impact_area || "—"}</td>
+                      <td><span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span></td>
+                      {hasInherited && <td>{!own ? <SourceBadge name={d.source_dashboard_name} /> : null}</td>}
+                      <td>{own && <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }} onClick={() => (editing ? setEditingDecisionId(null) : (setShowCreateDecision(false), openEditDecision(d)))}>{editing ? "Close" : "Edit"}</button>}</td>
+                    </tr>
+                    {editing && (
+                      <tr><td colSpan={hasInherited ? 8 : 7} style={{ background: "rgba(29,99,237,0.03)" }}>{renderDecisionEditForm(d)}</td></tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-          {/* ── RISKS ── */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ margin: 0 }}>Risks</h3>
-              <button className="button" onClick={() => { setShowCreateRisk((v) => !v); setEditingRiskId(null); }}>
-                {showCreateRisk ? "Cancel" : "+ Add Risk"}
-              </button>
-            </div>
-
+      {/* ── RISKS ── */}
+      <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Risks <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{risks.length} {risks.length === 1 ? "item" : "items"}</span></h3>
+          <button className="button" onClick={() => { setShowCreateRisk((v) => !v); setEditingRiskId(null); }}>
+            {showCreateRisk ? "Cancel" : "+ Add Risk"}
+          </button>
+        </div>
             {showCreateRisk && (
               <div className="inline-create-panel" style={{ marginBottom: 14 }}>
                 <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>New Risk</div>
@@ -889,236 +898,51 @@ export default function DashboardDetailPage() {
                 </div>
               </div>
             )}
-
-            {ownRisks.length === 0 && !showCreateRisk && inheritedRisks.length === 0 && (
-              <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No risks yet.</div>
-            )}
-
-            {ownRisks.map((r) => (
-              <div key={r.id} style={{ borderTop: "1px solid var(--border)" }}>
-                {editingRiskId === r.id ? (
-                  <div style={{ padding: "14px 0" }}>
-                    <input className="input" placeholder="Risk title" value={riskEditForm.risk_title}
-                      onChange={(e) => setRiskEditForm({ ...riskEditForm, risk_title: e.target.value })} style={{ marginBottom: 8 }} />
-                    <textarea className="input" rows={2} placeholder="Description" value={riskEditForm.risk_description}
-                      onChange={(e) => setRiskEditForm({ ...riskEditForm, risk_description: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
-                    <textarea className="input" rows={2} placeholder="Mitigation plan" value={riskEditForm.mitigation_plan}
-                      onChange={(e) => setRiskEditForm({ ...riskEditForm, mitigation_plan: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
-                    <div className="form-row">
-                      <select className="select" value={riskEditForm.account_id} onChange={(e) => setRiskEditForm({ ...riskEditForm, account_id: e.target.value })}>
-                        <option value="">Account</option>
-                        {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                      </select>
-                      <select className="select" value={riskEditForm.risk_owner} onChange={(e) => setRiskEditForm({ ...riskEditForm, risk_owner: e.target.value })}>
-                        <option value="">Owner</option>
-                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                      <select className="select" value={riskEditForm.impact_level} onChange={(e) => setRiskEditForm({ ...riskEditForm, impact_level: e.target.value })}>
-                        <option value="Low">Low</option><option value="Medium">Medium</option>
-                        <option value="High">High</option><option value="Critical">Critical</option>
-                      </select>
-                      <select className="select" value={riskEditForm.probability} onChange={(e) => setRiskEditForm({ ...riskEditForm, probability: e.target.value })}>
-                        <option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option>
-                      </select>
-                      <select className="select" value={riskEditForm.status} onChange={(e) => setRiskEditForm({ ...riskEditForm, status: e.target.value })}>
-                        <option value="Open">Open</option><option value="Mitigated">Mitigated</option><option value="Closed">Closed</option>
-                      </select>
-                      <input className="input" type="date" value={riskEditForm.target_mitigation_date}
-                        onChange={(e) => setRiskEditForm({ ...riskEditForm, target_mitigation_date: e.target.value })} />
-                    </div>
-                    <div className="inline-actions" style={{ marginTop: 8 }}>
-                      <label style={{ fontSize: 13, cursor: "pointer" }}>
-                        <input type="checkbox" checked={riskEditForm.publish_flag} onChange={(e) => setRiskEditForm({ ...riskEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
-                        Publish
-                      </label>
-                      <button className="button" onClick={() => saveRisk(r.id)}>Save</button>
-                      <button className="button secondary" onClick={() => setEditingRiskId(null)}>Cancel</button>
-                      <button className="button danger" onClick={() => deleteRisk(r.id)}>Delete</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{r.risk_title}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                        {acctName(r.account_id)} &nbsp;·&nbsp; {ownerName(r.risk_owner)}
-                        {r.target_mitigation_date && <> &nbsp;·&nbsp; Target {fmt(r.target_mitigation_date)}</>}
-                      </div>
-                      {r.risk_description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{r.risk_description}</div>}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      {r.status !== "Closed" && r.status !== "Mitigated" && <DeadlineChip deadline={r.target_mitigation_date} />}
-                      <span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span>
-                      <span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span>
-                      <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditRisk(r)}>Edit</button>
-                      <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteRisk(r.id)}>Delete</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {inheritedRisks.length > 0 && (
-              <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                  Inherited from child dashboards
-                </div>
-                {inheritedRisks.map((r) => (
-                  <div key={r.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{r.risk_title}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                          {acctName(r.account_id)} &nbsp;·&nbsp; {ownerName(r.risk_owner)}
-                          {r.target_mitigation_date && <> &nbsp;·&nbsp; Target {fmt(r.target_mitigation_date)}</>}
-                        </div>
-                        {r.risk_description && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{r.risk_description}</div>}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+        {risks.length === 0 ? (
+          <div style={{ color: "var(--muted)", fontSize: 13 }}>No risks yet.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr><th>Risk</th><th>Account</th><th>Owner</th><th>Impact</th><th>Probability</th><th>Mitigation Target</th><th>Status</th>{hasInherited && <th>Source</th>}<th></th></tr>
+            </thead>
+            <tbody>
+              {risks.map((r) => {
+                const own = r.source_dashboard_id === id;
+                const editing = editingRiskId === r.id;
+                return (
+                  <Fragment key={r.id}>
+                    <tr style={editing ? { background: "rgba(29,99,237,0.06)" } : undefined}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{r.risk_title}</div>
+                        {r.risk_description && <div style={{ color: "var(--muted)", fontSize: 12 }}>{r.risk_description}</div>}
+                      </td>
+                      <td>{acctName(r.account_id)}</td>
+                      <td>{ownerName(r.risk_owner)}</td>
+                      <td><span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span></td>
+                      <td>{r.probability}</td>
+                      <td>
+                        <div>{fmt(r.target_mitigation_date)}</div>
                         {r.status !== "Closed" && r.status !== "Mitigated" && <DeadlineChip deadline={r.target_mitigation_date} />}
-                        <SourceBadge name={r.source_dashboard_name} />
-                        <span className={`tag ${IMPACT_CLASS[r.impact_level] ?? "amber"}`}>{r.impact_level}</span>
-                        <span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                      </td>
+                      <td><span className={`tag ${r.status === "Closed" || r.status === "Mitigated" ? "green" : "amber"}`}>{r.status}</span></td>
+                      {hasInherited && <td>{!own ? <SourceBadge name={r.source_dashboard_name} /> : null}</td>}
+                      <td>{own && <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }} onClick={() => (editing ? setEditingRiskId(null) : (setShowCreateRisk(false), openEditRisk(r)))}>{editing ? "Close" : "Edit"}</button>}</td>
+                    </tr>
+                    {editing && (
+                      <tr><td colSpan={hasInherited ? 9 : 8} style={{ background: "rgba(29,99,237,0.03)" }}>{renderRiskEditForm(r)}</td></tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-          {/* ── DECISIONS ── */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ margin: 0 }}>Decisions</h3>
-              <button className="button" onClick={() => { setShowCreateDecision((v) => !v); setEditingDecisionId(null); }}>
-                {showCreateDecision ? "Cancel" : "+ Add Decision"}
-              </button>
-            </div>
-
-            {showCreateDecision && (
-              <div className="inline-create-panel" style={{ marginBottom: 14 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>New Decision</div>
-                <div className="form-row">
-                  <select className="select" value={newDecision.account_id} onChange={(e) => setNewDecision({ ...newDecision, account_id: e.target.value })}>
-                    <option value="">Account *</option>
-                    {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                  </select>
-                  <select className="select" value={newDecision.decision_owner} onChange={(e) => setNewDecision({ ...newDecision, decision_owner: e.target.value })}>
-                    <option value="">Owner *</option>
-                    {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                  <input className="input" type="date" value={newDecision.decision_deadline} onChange={(e) => setNewDecision({ ...newDecision, decision_deadline: e.target.value })} />
-                  <input className="input" placeholder="Impact area" value={newDecision.impact_area} onChange={(e) => setNewDecision({ ...newDecision, impact_area: e.target.value })} />
-                </div>
-                <input className="input" placeholder="Decision title *" value={newDecision.decision_title}
-                  onChange={(e) => setNewDecision({ ...newDecision, decision_title: e.target.value })} style={{ marginBottom: 8 }} />
-                <textarea className="input" rows={2} placeholder="Context / background" value={newDecision.decision_context}
-                  onChange={(e) => setNewDecision({ ...newDecision, decision_context: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
-                <div className="inline-actions">
-                  <label style={{ fontSize: 13, cursor: "pointer" }}>
-                    <input type="checkbox" checked={newDecision.publish_flag} onChange={(e) => setNewDecision({ ...newDecision, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
-                    Publish
-                  </label>
-                  <button className="button" onClick={createDecision}>Create Decision</button>
-                  <button className="button secondary" onClick={() => setShowCreateDecision(false)}>Cancel</button>
-                </div>
-              </div>
-            )}
-
-            {ownDecisions.length === 0 && !showCreateDecision && inheritedDecisions.length === 0 && (
-              <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>No decisions yet.</div>
-            )}
-
-            {ownDecisions.map((d) => (
-              <div key={d.id} style={{ borderTop: "1px solid var(--border)" }}>
-                {editingDecisionId === d.id ? (
-                  <div style={{ padding: "14px 0" }}>
-                    <input className="input" placeholder="Decision title" value={decisionEditForm.decision_title}
-                      onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_title: e.target.value })} style={{ marginBottom: 8 }} />
-                    <textarea className="input" rows={2} placeholder="Context / background" value={decisionEditForm.decision_context}
-                      onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_context: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
-                    <div className="form-row">
-                      <select className="select" value={decisionEditForm.account_id} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, account_id: e.target.value })}>
-                        <option value="">Account</option>
-                        {accountOptions.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-                      </select>
-                      <select className="select" value={decisionEditForm.decision_owner} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_owner: e.target.value })}>
-                        <option value="">Owner</option>
-                        {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                      <input className="input" type="date" value={decisionEditForm.decision_deadline}
-                        onChange={(e) => setDecisionEditForm({ ...decisionEditForm, decision_deadline: e.target.value })} />
-                      <input className="input" placeholder="Impact area" value={decisionEditForm.impact_area}
-                        onChange={(e) => setDecisionEditForm({ ...decisionEditForm, impact_area: e.target.value })} />
-                      <select className="select" value={decisionEditForm.status} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, status: e.target.value })}>
-                        <option value="Pending">Pending</option>
-                        <option value="Approved">Approved</option>
-                        <option value="Rejected">Rejected</option>
-                        <option value="Deferred">Deferred</option>
-                      </select>
-                    </div>
-                    <div className="inline-actions" style={{ marginTop: 8 }}>
-                      <label style={{ fontSize: 13, cursor: "pointer" }}>
-                        <input type="checkbox" checked={decisionEditForm.publish_flag} onChange={(e) => setDecisionEditForm({ ...decisionEditForm, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
-                        Publish
-                      </label>
-                      <button className="button" onClick={() => saveDecision(d.id)}>Save</button>
-                      <button className="button secondary" onClick={() => setEditingDecisionId(null)}>Cancel</button>
-                      <button className="button danger" onClick={() => deleteDecision(d.id)}>Delete</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "12px 0", gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{d.decision_title}</div>
-                      <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                        {acctName(d.account_id)} &nbsp;·&nbsp; {ownerName(d.decision_owner)}
-                        {d.decision_deadline && <> &nbsp;·&nbsp; Deadline {fmt(d.decision_deadline)}</>}
-                        {d.impact_area && <> &nbsp;·&nbsp; {d.impact_area}</>}
-                      </div>
-                      {d.decision_context && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{d.decision_context}</div>}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
-                      <span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span>
-                      <button className="button secondary" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => openEditDecision(d)}>Edit</button>
-                      <button className="button danger" style={{ height: 30, padding: "0 10px", fontSize: 12 }} onClick={() => deleteDecision(d.id)}>Delete</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {inheritedDecisions.length > 0 && (
-              <div style={{ borderTop: "2px solid var(--border)", marginTop: 8, paddingTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--muted)", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                  Inherited from child dashboards
-                </div>
-                {inheritedDecisions.map((d) => (
-                  <div key={d.id} style={{ borderTop: "1px solid var(--border)", opacity: 0.8 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "10px 0", gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 3 }}>{d.decision_title}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                          {acctName(d.account_id)} &nbsp;·&nbsp; {ownerName(d.decision_owner)}
-                          {d.decision_deadline && <> &nbsp;·&nbsp; Deadline {fmt(d.decision_deadline)}</>}
-                          {d.impact_area && <> &nbsp;·&nbsp; {d.impact_area}</>}
-                        </div>
-                        {d.decision_context && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{d.decision_context}</div>}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        {d.status === "Pending" && <DeadlineChip deadline={d.decision_deadline} />}
-                        <SourceBadge name={d.source_dashboard_name} />
-                        <span className={`tag ${DECISION_STATUS_CLASS[d.status] ?? "amber"}`}>{d.status}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
+      {/* ── Dashboard settings (owners & admins) ── */}
+      {canManageDashboard && (
+        <>
+          <h2 style={{ fontSize: 16, margin: "24px 0 12px" }}>Dashboard settings</h2>
           {/* ── ACCESS REQUESTS ── */}
           {accessRequests.length > 0 && (
             <div className="card" style={{ marginBottom: 16 }}>
