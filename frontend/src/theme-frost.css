@@ -1,0 +1,175 @@
+/* ── Seasonal theme: Frost (winter) ─────────────────────────────────
+   Applied by lib/seasonalTheme.ts, which adds `theme-frost` to <html>
+   from 1 December to the end of February (or always/never, per the
+   VITE_SEASONAL_THEME build setting). Every rule is scoped under
+   html.theme-frost, so outside the season PRISM looks exactly as usual. */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+
+html.theme-frost {
+  --bg: #e8f1f9;
+  --panel: rgba(255, 255, 255, 0.8);
+  --border: #d6e4f0;
+  --accent: #1e5aa8;
+  --accent-hover: #174a8b;
+  --text: #102a43;
+  --muted: #486581;
+  --danger: #c81e4a;
+  --warn: #9a6700;
+  --ok: #0f766e;
+  --sidebar-bg: #0f2a44;
+  --sidebar-hover: rgba(255, 255, 255, 0.14);
+  --header-bg: rgba(255, 255, 255, 0.65);
+  --frost-shadow: 0 8px 24px rgba(16, 42, 67, 0.08);
+
+  /* Sky behind everything; the snow layer sits on top of it (body::before). */
+  background: linear-gradient(180deg, #dceaf6 0%, #eef5fb 45%, #f7fbfe 100%) fixed;
+  min-height: 100%;
+}
+
+html.theme-frost body {
+  background: transparent;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+}
+
+/* Gently falling snow: a tall layer of soft dots drifting down, behind the
+   page content and never in the way of clicks. */
+html.theme-frost body::before {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: -100vh;
+  height: 200vh;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.95) 0 2px, transparent 3px),
+    radial-gradient(circle at 63% 41%, rgba(255, 255, 255, 0.9) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 37% 77%, rgba(255, 255, 255, 0.9) 0 2.5px, transparent 3.5px),
+    radial-gradient(circle at 86% 64%, rgba(255, 255, 255, 0.85) 0 1.5px, transparent 2.5px);
+  background-size: 140px 140px, 190px 190px, 230px 230px, 170px 170px;
+  animation: frost-snowfall 120s linear infinite;
+  will-change: transform;
+}
+@keyframes frost-snowfall {
+  from { transform: translateY(0); }
+  to { transform: translateY(100vh); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.theme-frost body::before { animation: none; }
+}
+
+/* Sidebar: glacier night, frosted active item */
+html.theme-frost .sidebar { background: linear-gradient(180deg, #0f2a44 0%, #16406a 100%); }
+html.theme-frost .brand { letter-spacing: 0.06em; color: #e6f2ff; }
+html.theme-frost .sidebar-avatar { background: #ffffff; color: #0f2a44; box-shadow: 0 0 0 3px rgba(191, 224, 255, 0.35); }
+html.theme-frost .nav-item { color: #a9c7e3; border-radius: 10px; }
+html.theme-frost .nav-item:hover,
+html.theme-frost .nav-item.active { background: rgba(255, 255, 255, 0.14); color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22); }
+html.theme-frost .sidebar-pin:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Header: frosted glass */
+html.theme-frost .header {
+  background: var(--header-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom-color: rgba(16, 42, 67, 0.08);
+}
+html.theme-frost .header-title { font-weight: 800; letter-spacing: 0.04em; color: #0f2a44; }
+
+/* Frosted panels */
+html.theme-frost .card,
+html.theme-frost .section,
+html.theme-frost .kpi-strip {
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: var(--frost-shadow);
+  border-radius: 16px;
+}
+html.theme-frost .kpi-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(16, 42, 67, 0.06);
+}
+html.theme-frost .kpi-value { font-size: 22px; font-weight: 800; }
+html.theme-frost .inline-create-panel {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: var(--border);
+  border-radius: 14px;
+}
+
+/* Dashboard banner: winter night sky with snow */
+html.theme-frost .dashboard-header {
+  border-radius: 18px;
+  padding: 22px 24px;
+  background-color: #0f2a44;
+  /* Five snow layers with unrelated tile sizes and offsets, so the flakes
+     read as scattered rather than as rows of dots. */
+  background-image:
+    radial-gradient(circle at 23% 31%, rgba(255, 255, 255, 0.9) 0 1.6px, transparent 2.6px),
+    radial-gradient(circle at 71% 64%, rgba(255, 255, 255, 0.7) 0 1px, transparent 2px),
+    radial-gradient(circle at 44% 87%, rgba(255, 255, 255, 0.85) 0 2.2px, transparent 3.2px),
+    radial-gradient(circle at 88% 12%, rgba(255, 255, 255, 0.6) 0 1.2px, transparent 2.2px),
+    radial-gradient(circle at 9% 72%, rgba(255, 255, 255, 0.75) 0 1.4px, transparent 2.4px),
+    linear-gradient(120deg, #0f2a44 0%, #1e4f86 60%, #5b9bd5 100%);
+  background-size: 97px 83px, 61px 71px, 149px 127px, 113px 59px, 173px 101px, 100% 100%;
+  background-position: 0 0, 17px 9px, 41px 23px, 7px 31px, 59px 13px, 0 0;
+  box-shadow: 0 12px 30px rgba(15, 42, 68, 0.22);
+}
+html.theme-frost .dashboard-header h1 { font-size: 24px; font-weight: 800; }
+html.theme-frost .dashboard-subtitle { color: #d9ecff; }
+
+/* Tabs */
+html.theme-frost .tab-bar { border-bottom-color: #d6e4f0; }
+html.theme-frost .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+
+/* Buttons: rounded pills */
+html.theme-frost .button {
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: linear-gradient(180deg, #2a6fc0, #1e5aa8);
+  box-shadow: 0 6px 16px rgba(30, 90, 168, 0.25);
+}
+html.theme-frost .button:hover { background: linear-gradient(180deg, #2563ae, #174a8b); }
+html.theme-frost .button.secondary {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--accent);
+  border: 1px solid #9cc2e8;
+  box-shadow: none;
+}
+html.theme-frost .button.secondary:hover { background: #ffffff; border-color: var(--accent); }
+html.theme-frost .button.danger { background: linear-gradient(180deg, #d9365f, #c81e4a); box-shadow: 0 6px 16px rgba(200, 30, 74, 0.22); }
+
+/* Status tags: icy tints, darker text for readability */
+html.theme-frost .tag.red { background: #ffe1e8; color: #a3123b; }
+html.theme-frost .tag.amber { background: #fdf0c8; color: #7a4f00; }
+html.theme-frost .tag.green { background: #d5f5ee; color: #0f5e57; }
+html.theme-frost .tag.grey { background: #e8eef5; color: #486581; }
+html.theme-frost .badge { background: #e3eef9; color: #1e5aa8; }
+
+/* Tables */
+html.theme-frost .table th {
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom-color: #d9e6f2;
+}
+html.theme-frost .table td { border-bottom-color: #e8f0f7; }
+html.theme-frost .table tr:hover { background: rgba(30, 90, 168, 0.05); }
+
+/* Form fields */
+html.theme-frost .input,
+html.theme-frost .select {
+  border-color: #c9dbec;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+/* Pop-ups */
+html.theme-frost .modal-backdrop { background: rgba(15, 42, 68, 0.35); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+html.theme-frost .modal-panel { border-radius: 18px; border-color: rgba(255, 255, 255, 0.9); background: rgba(255, 255, 255, 0.95); }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { Modal } from "../components/Modal";
 
 type AdminTab = "users" | "dashboards" | "groups" | "teams" | "accounts" | "categories" | "access" | "signup-requests" | "access-requests" | "delete-requests";
 const ADMIN_TABS: AdminTab[] = ["users", "dashboards", "groups", "teams", "accounts", "categories", "access", "signup-requests", "access-requests", "delete-requests"];
@@ -39,7 +40,10 @@ export default function AdminPage() {
   const [newTeam, setNewTeam] = useState({ name: "", description: "" });
 
   const [newUser, setNewUser] = useState({ name: "", email: "", manager_id: "", role: "User" });
-  const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; manager_id: string; role: string; is_active: boolean } | null>(null);
+  const [editingUser, setEditingUser] = useState<{ id: string; name: string; email: string; originalName: string; originalEmail: string; manager_id: string; role: string; is_active: boolean } | null>(null);
+  const [userModalError, setUserModalError] = useState<{ message: string; canDeactivate?: boolean } | null>(null);
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(false);
+  const [userBusy, setUserBusy] = useState(false);
   const [newDashboard, setNewDashboard] = useState({ name: "", description: "", owner_ids: [] as string[], parent_dashboard_id: "" });
   const [editingDashboard, setEditingDashboard] = useState<{ id: string; name: string; description: string; ownerIds: string[]; parent_dashboard_id: string } | null>(null);
   const [newGroup, setNewGroup] = useState({ name: "", description: "" });
@@ -149,17 +153,66 @@ export default function AdminPage() {
     } catch (err: any) { setError(err.message); }
   }
 
+  function openUserModal(u: any) {
+    setUserModalError(null);
+    setConfirmDeleteUser(false);
+    setEditingUser({ id: u.id, name: u.name, email: u.email, originalName: u.name, originalEmail: u.email, manager_id: u.manager_id || "", role: u.role, is_active: u.is_active !== false });
+  }
+  function closeUserModal() {
+    if (userBusy) return;
+    setEditingUser(null);
+    setConfirmDeleteUser(false);
+    setUserModalError(null);
+  }
+
   async function handleUpdateUser() {
     if (!editingUser) return;
-    setError(null);
+    setUserModalError(null);
+    setUserBusy(true);
     try {
-      await api(`/users/${editingUser.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ name: editingUser.name, manager_id: editingUser.manager_id || null, role: editingUser.role, is_active: editingUser.is_active })
-      });
+      const body: any = { name: editingUser.name, manager_id: editingUser.manager_id || null, role: editingUser.role, is_active: editingUser.is_active };
+      if (editingUser.email.trim() !== editingUser.originalEmail) body.email = editingUser.email.trim();
+      await api(`/users/${editingUser.id}`, { method: "PATCH", body: JSON.stringify(body) });
       setEditingUser(null);
       await loadAll();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) {
+      setUserModalError({ message: err.message });
+    } finally {
+      setUserBusy(false);
+    }
+  }
+
+  async function handleDeleteUser() {
+    if (!editingUser) return;
+    setUserModalError(null);
+    setUserBusy(true);
+    try {
+      await api(`/users/${editingUser.id}`, { method: "DELETE" });
+      setEditingUser(null);
+      setConfirmDeleteUser(false);
+      await loadAll();
+    } catch (err: any) {
+      // 409 = the user has history; the server explains what, and deactivating is the alternative.
+      setUserModalError({ message: err.message, canDeactivate: err.status === 409 });
+      setConfirmDeleteUser(false);
+    } finally {
+      setUserBusy(false);
+    }
+  }
+
+  async function handleDeactivateInstead() {
+    if (!editingUser) return;
+    setUserBusy(true);
+    try {
+      await api(`/users/${editingUser.id}`, { method: "PATCH", body: JSON.stringify({ is_active: false }) });
+      setEditingUser(null);
+      setUserModalError(null);
+      await loadAll();
+    } catch (err: any) {
+      setUserModalError({ message: err.message });
+    } finally {
+      setUserBusy(false);
+    }
   }
 
   async function handleCreateDashboard() {
@@ -419,33 +472,68 @@ export default function AdminPage() {
             <h3 style={{ margin: "0 0 12px 0" }}>All Users</h3>
 
             {editingUser && (
-              <div className="inline-create-panel" style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 600, marginBottom: 10, fontSize: 14 }}>Editing: {editingUser.email}</div>
-                <div className="form-row">
-                  <input className="input" placeholder="Name" value={editingUser.name}
-                    onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} />
-                  <select className="select" value={editingUser.manager_id}
-                    onChange={(e) => setEditingUser({ ...editingUser, manager_id: e.target.value })}>
-                    <option value="">No Manager</option>
-                    {users.filter((u) => u.id !== editingUser.id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                  <select className="select" value={editingUser.role}
-                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}>
-                    <option value="User">User</option>
-                    <option value="Admin">Admin</option>
-                    <option value="SuperAdmin">SuperAdmin</option>
-                  </select>
-                  <select className="select" value={editingUser.is_active ? "active" : "inactive"}
-                    onChange={(e) => setEditingUser({ ...editingUser, is_active: e.target.value === "active" })}>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
+              <Modal
+                title={<>Edit user <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 14 }}>· {editingUser.originalName}</span></>}
+                onClose={closeUserModal}
+                footer={confirmDeleteUser ? (
+                  <>
+                    <span style={{ fontSize: 13, flex: "1 1 220px" }}>Permanently delete <strong>{editingUser.originalName}</strong>? This can't be undone.</span>
+                    <button className="button danger" onClick={handleDeleteUser} disabled={userBusy}>{userBusy ? "Deleting…" : "Yes, delete"}</button>
+                    <button className="button secondary" onClick={() => setConfirmDeleteUser(false)} disabled={userBusy}>Keep user</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="button" onClick={handleUpdateUser} disabled={userBusy}>{userBusy ? "Saving…" : "Save changes"}</button>
+                    <button className="button secondary" onClick={closeUserModal} disabled={userBusy}>Cancel</button>
+                    {editingUser.id !== me?.id && (
+                      <button className="button danger" style={{ marginLeft: "auto" }} onClick={() => { setUserModalError(null); setConfirmDeleteUser(true); }} disabled={userBusy}>Delete user</button>
+                    )}
+                  </>
+                )}
+              >
+                <label>Name
+                  <input className="input" value={editingUser.name} onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })} />
+                </label>
+                <label>Email
+                  <input className="input" type="email" value={editingUser.email} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} />
+                  {editingUser.email.trim() !== editingUser.originalEmail && (
+                    <span style={{ fontSize: 12, fontWeight: 400, color: "var(--muted)" }}>
+                      They'll sign in with the new address from now on, and PRISM emails will go there.
+                    </span>
+                  )}
+                </label>
+                <div className="form-row" style={{ margin: 0 }}>
+                  <label style={{ flex: 1 }}>Manager
+                    <select className="select" value={editingUser.manager_id} onChange={(e) => setEditingUser({ ...editingUser, manager_id: e.target.value })}>
+                      <option value="">No Manager</option>
+                      {users.filter((u) => u.id !== editingUser.id).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ flex: 1 }}>Role
+                    <select className="select" value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}>
+                      <option value="User">User</option>
+                      <option value="Admin">Admin</option>
+                      <option value="SuperAdmin">SuperAdmin</option>
+                    </select>
+                  </label>
+                  <label style={{ flex: 1 }}>Status
+                    <select className="select" value={editingUser.is_active ? "active" : "inactive"} onChange={(e) => setEditingUser({ ...editingUser, is_active: e.target.value === "active" })}>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </label>
                 </div>
-                <div className="inline-actions">
-                  <button className="button" onClick={handleUpdateUser}>Save Changes</button>
-                  <button className="button secondary" onClick={() => setEditingUser(null)}>Cancel</button>
-                </div>
-              </div>
+                {userModalError && (
+                  <div role="alert" style={{ fontSize: 13, color: "#b42318", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, padding: "10px 12px" }}>
+                    {userModalError.message}
+                    {userModalError.canDeactivate && editingUser.is_active && (
+                      <div style={{ marginTop: 8 }}>
+                        <button className="button secondary" style={{ height: 28, fontSize: 12 }} onClick={handleDeactivateInstead} disabled={userBusy}>Deactivate instead</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Modal>
             )}
 
             <table className="table">
@@ -468,7 +556,7 @@ export default function AdminPage() {
                     <td><span className="badge">{u.is_active !== false ? "Active" : "Inactive"}</span></td>
                     <td>
                       <button className="button secondary" style={{ height: 28, padding: "0 10px", fontSize: 12 }}
-                        onClick={() => setEditingUser({ id: u.id, name: u.name, email: u.email, manager_id: u.manager_id || "", role: u.role, is_active: u.is_active !== false })}>
+                        onClick={() => openUserModal(u)}>
                         Edit
                       </button>
                     </td>

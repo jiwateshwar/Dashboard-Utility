@@ -104,9 +104,11 @@ router.post("/", async (req, res) => {
     publish_flag
   } = req.body as any;
 
-  if (!dashboard_id || !account_id || !risk_title || !risk_owner || !impact_level || !probability) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
+  const missing = [
+    !dashboard_id && "dashboard", !account_id && "account", !risk_title && "risk title",
+    !risk_owner && "owner", !impact_level && "impact", !probability && "probability"
+  ].filter(Boolean);
+  if (missing.length) return res.status(400).json({ error: `Missing: ${missing.join(", ")}` });
 
   const role = await getUserRole(userId);
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));

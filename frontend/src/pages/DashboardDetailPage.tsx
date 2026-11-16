@@ -84,6 +84,11 @@ export default function DashboardDetailPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Errors from the Add Task / Risk / Decision forms, shown inside that form
+  // (the page-level error sits at the top, out of view while you're filling a form).
+  const [createError, setCreateError] = useState<{ form: "task" | "risk" | "decision"; message: string } | null>(null);
+  const formError = (form: "task" | "risk" | "decision") =>
+    createError?.form === form ? <div role="alert" style={{ color: "#ef6a62", fontSize: 13, fontWeight: 500, margin: "0 0 8px 0" }}>{createError.message}</div> : null;
   const [showArchived, setShowArchived] = useState(false);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
@@ -250,9 +255,15 @@ export default function DashboardDetailPage() {
 
   async function createTask() {
     if (!id) return;
-    setError(null);
-    if (newTask.owner_ids.length === 0) { setError("At least one owner is required"); return; }
-    if (!newTask.account_id && !proposedAccountName) { setError("Account is required"); return; }
+    setCreateError(null);
+    const missing = [
+      !newTask.category_id && "Category",
+      !newTask.account_id && !proposedAccountName && "Account (pick one from the list)",
+      newTask.owner_ids.length === 0 && "Owner (pick from the list)",
+      !newTask.target_date && "Due date",
+      !newTask.item_details.trim() && "Task details"
+    ].filter(Boolean);
+    if (missing.length) { setCreateError({ form: "task", message: `Please fill in: ${missing.join(", ")}` }); return; }
     try {
       const body: any = {
         dashboard_id: id, ...newTask,
@@ -269,12 +280,18 @@ export default function DashboardDetailPage() {
       // Refresh accounts too so the pending account appears if admin is also viewing
       const [, a] = await Promise.all([refresh(), api(`/accounts`)]);
       setAccounts(a as any[]);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setCreateError({ form: "task", message: err.message }); }
   }
 
   async function createRisk() {
     if (!id) return;
-    setError(null);
+    setCreateError(null);
+    const missing = [
+      !newRisk.account_id && "Account",
+      !newRisk.risk_owner && "Owner",
+      !newRisk.risk_title.trim() && "Risk title"
+    ].filter(Boolean);
+    if (missing.length) { setCreateError({ form: "risk", message: `Please fill in: ${missing.join(", ")}` }); return; }
     try {
       await api(`/risks`, {
         method: "POST",
@@ -283,12 +300,19 @@ export default function DashboardDetailPage() {
       setNewRisk({ ...EMPTY_RISK });
       setShowCreateRisk(false);
       await refresh();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setCreateError({ form: "risk", message: err.message }); }
   }
 
   async function createDecision() {
     if (!id) return;
-    setError(null);
+    setCreateError(null);
+    const missing = [
+      !newDecision.account_id && "Account",
+      !newDecision.decision_owner && "Owner",
+      !newDecision.decision_deadline && "Deadline",
+      !newDecision.decision_title.trim() && "Decision title"
+    ].filter(Boolean);
+    if (missing.length) { setCreateError({ form: "decision", message: `Please fill in: ${missing.join(", ")}` }); return; }
     try {
       await api(`/decisions`, {
         method: "POST",
@@ -297,7 +321,7 @@ export default function DashboardDetailPage() {
       setNewDecision({ ...EMPTY_DECISION });
       setShowCreateDecision(false);
       await refresh();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setCreateError({ form: "decision", message: err.message }); }
   }
 
   // ── Save handlers ────────────────────────────────────────────
@@ -675,7 +699,7 @@ export default function DashboardDetailPage() {
       <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12 }}>
           <h3 style={{ margin: 0 }}>Tasks <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{displayedTasks.length} {displayedTasks.length === 1 ? "item" : "items"}</span></h3>
-          <button className="button" onClick={() => { setShowCreateTask((v) => !v); setEditingTaskId(null); setProposedAccountName(""); }}>
+          <button className="button" onClick={() => { setShowCreateTask((v) => !v); setEditingTaskId(null); setProposedAccountName(""); setCreateError(null); }}>
             {showCreateTask ? "Cancel" : "+ Add Task"}
           </button>
         </div>
@@ -717,6 +741,7 @@ export default function DashboardDetailPage() {
                 <div style={{ marginBottom: 10 }}>
                   <HashtagInput tags={newTask.tags} onChange={(tags) => setNewTask({ ...newTask, tags })} />
                 </div>
+                {formError("task")}
                 <div className="inline-actions">
                   <label style={{ fontSize: 13, cursor: "pointer" }}>
                     <input type="checkbox" checked={newTask.publish_flag} onChange={(e) => setNewTask({ ...newTask, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
@@ -779,7 +804,7 @@ export default function DashboardDetailPage() {
       <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12 }}>
           <h3 style={{ margin: 0 }}>Decisions <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{decisions.length} {decisions.length === 1 ? "item" : "items"}</span></h3>
-          <button className="button" onClick={() => { setShowCreateDecision((v) => !v); setEditingDecisionId(null); }}>
+          <button className="button" onClick={() => { setShowCreateDecision((v) => !v); setEditingDecisionId(null); setCreateError(null); }}>
             {showCreateDecision ? "Cancel" : "+ Add Decision"}
           </button>
         </div>
@@ -802,6 +827,7 @@ export default function DashboardDetailPage() {
                   onChange={(e) => setNewDecision({ ...newDecision, decision_title: e.target.value })} style={{ marginBottom: 8 }} />
                 <textarea className="input" rows={2} placeholder="Context / background" value={newDecision.decision_context}
                   onChange={(e) => setNewDecision({ ...newDecision, decision_context: e.target.value })} style={{ resize: "vertical", marginBottom: 8 }} />
+                {formError("decision")}
                 <div className="inline-actions">
                   <label style={{ fontSize: 13, cursor: "pointer" }}>
                     <input type="checkbox" checked={newDecision.publish_flag} onChange={(e) => setNewDecision({ ...newDecision, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />
@@ -856,7 +882,7 @@ export default function DashboardDetailPage() {
       <div className="card" style={{ marginBottom: 16, overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 12 }}>
           <h3 style={{ margin: 0 }}>Risks <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>{risks.length} {risks.length === 1 ? "item" : "items"}</span></h3>
-          <button className="button" onClick={() => { setShowCreateRisk((v) => !v); setEditingRiskId(null); }}>
+          <button className="button" onClick={() => { setShowCreateRisk((v) => !v); setEditingRiskId(null); setCreateError(null); }}>
             {showCreateRisk ? "Cancel" : "+ Add Risk"}
           </button>
         </div>
@@ -888,6 +914,7 @@ export default function DashboardDetailPage() {
                 <div className="form-row">
                   <input className="input" type="date" value={newRisk.target_mitigation_date} onChange={(e) => setNewRisk({ ...newRisk, target_mitigation_date: e.target.value })} />
                 </div>
+                {formError("risk")}
                 <div className="inline-actions">
                   <label style={{ fontSize: 13, cursor: "pointer" }}>
                     <input type="checkbox" checked={newRisk.publish_flag} onChange={(e) => setNewRisk({ ...newRisk, publish_flag: e.target.checked })} style={{ marginRight: 6 }} />

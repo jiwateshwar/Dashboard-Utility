@@ -60,8 +60,6 @@ export default function DashboardsPage() {
   const groupNames = Object.keys(grouped).sort();
 
   function DashboardCard({ d }: { d: any }) {
-    const owners: any[] = d.owners ?? [];
-    const ownerText = owners.map((o: any) => o.name).join(", ") || "—";
 
     if (d.has_access) {
       return (
@@ -77,7 +75,6 @@ export default function DashboardsPage() {
             </span>
           </div>
           <div style={{ color: "var(--muted)", fontSize: 13, marginBottom: 4 }}>{d.description || "No description"}</div>
-          <div style={{ fontSize: 12, color: "var(--muted)" }}>Owners: {ownerText}</div>
         </Link>
       );
     }
@@ -105,7 +102,6 @@ export default function DashboardsPage() {
           )}
         </div>
         <div style={{ color: "var(--muted)", fontSize: 13, marginBottom: 4 }}>{d.description || "No description"}</div>
-        <div style={{ fontSize: 12, color: "var(--muted)" }}>Owners: {ownerText}</div>
       </div>
     );
   }

@@ -19,7 +19,7 @@ import ProfilePage from "./pages/ProfilePage";
 import SystemBackupsPage from "./pages/SystemBackupsPage";
 import SsoSettingsPage from "./pages/SsoSettingsPage";
 import EmailSettingsPage from "./pages/EmailSettingsPage";
-import Sidebar from "./components/Sidebar";
+import Sidebar, { type SidebarMode } from "./components/Sidebar";
 import { useActivityPing } from "./lib/useActivityPing";
 
 export type User = {
@@ -55,6 +55,17 @@ export default function App() {
   const isAdmin = user?.role === "Admin" || user?.role === "SuperAdmin";
   useActivityPing(!!user);
 
+  // Sidebar: auto-hide to an icon rail by default (more room for dashboards),
+  // or pinned open. Remembered per browser.
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
+    try { return localStorage.getItem("prism.sidebar") === "pinned" ? "pinned" : "auto"; } catch { return "auto"; }
+  });
+  const chooseSidebarMode = (m: SidebarMode) => {
+    setSidebarMode(m);
+    try { localStorage.setItem("prism.sidebar", m); } catch { /* storage blocked — just don't remember */ }
+  };
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   useEffect(() => {
     if (!isAdmin) return;
     api("/admin/active-sessions").then(setActiveSessions).catch(() => {});
@@ -80,12 +91,23 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar user={user} />
+      <Sidebar
+        user={user}
+        mode={sidebarMode}
+        onModeChange={chooseSidebarMode}
+        mobileOpen={mobileNavOpen}
+        onMobileClose={() => setMobileNavOpen(false)}
+      />
       <div className="app-content">
         <div className="header">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button type="button" className="mobile-menu-btn" aria-label="Open menu" onClick={() => setMobileNavOpen(true)}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+          </button>
           <div>
             <div className="header-title">PRISM</div>
             <div className="header-subtitle">Performance Reporting, Insights & Status Management</div>
+          </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {isAdmin && (

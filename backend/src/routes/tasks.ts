@@ -188,9 +188,15 @@ router.post("/", async (req, res) => {
 
   const ownerIdList: string[] = Array.isArray(owner_ids) ? owner_ids : (owner_ids ? [owner_ids] : []);
 
-  if (!dashboard_id || !category_id || (!account_id && !proposed_account_name) || !item_details || ownerIdList.length === 0 || !target_date) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
+  const missing = [
+    !dashboard_id && "dashboard",
+    !category_id && "category",
+    !account_id && !proposed_account_name && "account",
+    !item_details && "task details",
+    ownerIdList.length === 0 && "owner",
+    !target_date && "due date"
+  ].filter(Boolean);
+  if (missing.length) return res.status(400).json({ error: `Missing: ${missing.join(", ")}` });
 
   const role = await getUserRole(userId);
   const canView = isAdminRole(role) || (await hasDashboardAccess(userId, dashboard_id)) || (await isDashboardOwner(userId, dashboard_id));

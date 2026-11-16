@@ -51,6 +51,22 @@ async function subtreeHeight(dashboardId: string): Promise<number> {
  * Returns an error string or null if valid.
  * Pass dashboardId=null for a brand-new dashboard (no existing subtree).
  */
+/**
+ * Dashboard names are unique, ignoring case and extra spaces (so "Ops UPS"
+ * and "ops  ups" clash). Checks every dashboard, active or not. Returns the
+ * existing name on a clash, else null. Enforced here rather than with a DB
+ * constraint so existing data can never stop the server from starting.
+ */
+async function dashboardNameTaken(name: string, exceptId?: string): Promise<string | null> {
+  const { rows } = await query(
+    `SELECT name FROM dashboards
+     WHERE lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = lower($1) AND ($2::uuid IS NULL OR id <> $2)
+     LIMIT 1`,
+    [name, exceptId ?? null]
+  );
+  return rows[0]?.name ?? null;
+}
+
 async function validateParent(dashboardId: string | null, parentId: string): Promise<string | null> {
   // Cycle check: parentId must not be a descendant of dashboardId
   if (dashboardId) {
@@ -285,10 +301,13 @@ router.post("/", async (req, res) => {
   if (!isAdminRole(role)) {
     return res.status(403).json({ error: "Admin only" });
   }
-  const { name, description, owner_ids, parent_dashboard_id } = req.body as any;
+  const { description, owner_ids, parent_dashboard_id } = req.body as any;
+  const name = String((req.body as any).name ?? "").trim().replace(/\s+/g, " ");
   if (!name || !Array.isArray(owner_ids) || owner_ids.length === 0) {
     return res.status(400).json({ error: "name and at least one owner_id required" });
   }
+  const clash = await dashboardNameTaken(name);
+  if (clash) return res.status(409).json({ error: `A dashboard named "${clash}" already exists — dashboard names must be unique` });
 
   if (parent_dashboard_id) {
     const err = await validateParent(null, parent_dashboard_id);
@@ -420,7 +439,13 @@ router.patch("/:id", async (req, res) => {
   if (!isAdminRole(role) && !(await isDashboardOwner(userId, id))) {
     return res.status(403).json({ error: "Not allowed" });
   }
-  const { name, description, is_active, parent_dashboard_id } = req.body as any;
+  const { description, is_active, parent_dashboard_id } = req.body as any;
+  const name = typeof (req.body as any).name === "string" ? (req.body as any).name.trim().replace(/\s+/g, " ") : undefined;
+  if (name !== undefined) {
+    if (!name) return res.status(400).json({ error: "Dashboard name can't be empty" });
+    const clash = await dashboardNameTaken(name, id);
+    if (clash) return res.status(409).json({ error: `A dashboard named "${clash}" already exists — dashboard names must be unique` });
+  }
 
   // Validate hierarchy if parent is being changed
   if (parent_dashboard_id !== undefined) {
