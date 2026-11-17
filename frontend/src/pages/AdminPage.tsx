@@ -57,7 +57,7 @@ export default function AdminPage() {
     setError(null);
     try {
       const results = await Promise.allSettled([
-        api("/users"), api("/dashboards"), api("/groups"),
+        api("/users"), api("/dashboards?include_inactive=1"), api("/groups"),
         api("/accounts"), api("/admin/signup-requests"), api("/dashboards/access-requests"),
         api("/accounts/pending"), api("/auth/me"), api("/dashboards/delete-requests"),
         api("/share-teams")
@@ -578,7 +578,7 @@ export default function AdminPage() {
               <input className="input" placeholder="Description" value={newDashboard.description} onChange={(e) => setNewDashboard({ ...newDashboard, description: e.target.value })} />
               <select className="select" value={newDashboard.parent_dashboard_id} onChange={(e) => setNewDashboard({ ...newDashboard, parent_dashboard_id: e.target.value })}>
                 <option value="">No Parent (Top Level)</option>
-                {dashboards.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                {dashboards.filter((d) => d.is_active !== false).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: 12 }}>
@@ -606,7 +606,7 @@ export default function AdminPage() {
                   <select className="select" value={editingDashboard.parent_dashboard_id}
                     onChange={(e) => setEditingDashboard({ ...editingDashboard, parent_dashboard_id: e.target.value })}>
                     <option value="">No Parent (Top Level)</option>
-                    {dashboards.filter((d) => d.id !== editingDashboard.id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    {dashboards.filter((d) => d.id !== editingDashboard.id && d.is_active !== false).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
                 </div>
                 <div style={{ marginBottom: 12 }}>
@@ -632,16 +632,16 @@ export default function AdminPage() {
                 {dashboards.map((d) => {
                   const owners: any[] = d.owners ?? [];
                   return (
-                    <tr key={d.id} style={editingDashboard?.id === d.id ? { background: "#eef6ff" } : {}}>
-                      <td style={{ fontWeight: 500 }}>{d.name}</td>
+                    <tr key={d.id} style={editingDashboard?.id === d.id ? { background: "#eef6ff" } : d.is_active === false ? { opacity: 0.6 } : {}}>
+                      <td style={{ fontWeight: 500, textDecoration: d.is_active === false ? "line-through" : "none" }}>{d.name}</td>
                       <td style={{ color: "var(--muted)" }}>{d.parent_dashboard_name || "—"}</td>
                       <td style={{ color: "var(--muted)" }}>{d.description || "—"}</td>
                       <td>{owners.length > 0 ? owners.map((o: any) => o.name).join(", ") : <span style={{ color: "var(--muted)" }}>—</span>}</td>
-                      <td><span className="badge">{d.is_active !== false ? "Active" : "Inactive"}</span></td>
+                      <td><span className="badge">{d.is_active !== false ? "Active" : "Deleted (hidden)"}</span></td>
                       <td className="inline-actions">
                         <button className="button secondary" onClick={() => startEditDashboard(d)}>Edit</button>
                         <button className="button secondary" onClick={() => handleToggleDashboardActive(d)}>
-                          {d.is_active !== false ? "Deactivate" : "Activate"}
+                          {d.is_active !== false ? "Deactivate" : "Restore"}
                         </button>
                       </td>
                     </tr>

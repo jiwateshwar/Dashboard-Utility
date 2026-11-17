@@ -11,7 +11,7 @@ export default function AuditLogPage() {
   const [items, setItems] = useState<any[]>([]);
 
   useEffect(() => {
-    api("/dashboards").then(setDashboards).catch(() => setDashboards([]));
+    api("/dashboards?include_inactive=1").then(setDashboards).catch(() => setDashboards([]));
   }, []);
 
   async function runSearch() {
@@ -35,7 +35,7 @@ export default function AuditLogPage() {
           <select className="select" value={filters.dashboard_id} onChange={(e) => setFilters({ ...filters, dashboard_id: e.target.value })}>
             <option value="">All Dashboards</option>
             {dashboards.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+              <option key={d.id} value={d.id}>{d.name}{d.is_active === false ? " (deleted)" : ""}</option>
             ))}
           </select>
           <select className="select" value={filters.entity_type} onChange={(e) => setFilters({ ...filters, entity_type: e.target.value })}>

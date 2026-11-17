@@ -24,6 +24,7 @@ router.get("/", async (req, res) => {
     `SELECT id, item_details as title, 'Task' as type, dashboard_id
      FROM tasks
      WHERE is_archived = false
+       AND dashboard_id IN (SELECT id FROM dashboards WHERE is_active = true)
        AND ($2::uuid IS NULL OR dashboard_id = $2)
        AND (publish_flag = true OR owner_id = $3 OR created_by = $3 OR owner_id = ANY($4) OR created_by = ANY($4))
        AND (item_details ILIKE '%' || $1 || '%')
@@ -36,6 +37,7 @@ router.get("/", async (req, res) => {
     `SELECT id, risk_title as title, 'Risk' as type, dashboard_id
      FROM risks
      WHERE is_archived = false
+       AND dashboard_id IN (SELECT id FROM dashboards WHERE is_active = true)
        AND ($2::uuid IS NULL OR dashboard_id = $2)
        AND (publish_flag = true OR risk_owner = $3 OR risk_owner = ANY($4))
        AND (risk_title ILIKE '%' || $1 || '%' OR risk_description ILIKE '%' || $1 || '%')
@@ -47,6 +49,7 @@ router.get("/", async (req, res) => {
     `SELECT id, decision_title as title, 'Decision' as type, dashboard_id
      FROM decisions
      WHERE is_archived = false
+       AND dashboard_id IN (SELECT id FROM dashboards WHERE is_active = true)
        AND ($2::uuid IS NULL OR dashboard_id = $2)
        AND (publish_flag = true OR decision_owner = $3 OR created_by = $3 OR decision_owner = ANY($4) OR created_by = ANY($4))
        AND (decision_title ILIKE '%' || $1 || '%' OR decision_context ILIKE '%' || $1 || '%')

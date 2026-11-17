@@ -16,7 +16,7 @@ export async function buildSnapshotContent(dashboardId: string) {
        UNION ALL
        SELECT dsh.id, c.depth + 1
        FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
-       WHERE c.depth < 2
+       WHERE c.depth < 2 AND dsh.is_active = true
      )
      SELECT t.*, u.name as owner_name, cat.name as category_name, a.account_name
      FROM tasks t
@@ -35,7 +35,7 @@ export async function buildSnapshotContent(dashboardId: string) {
        UNION ALL
        SELECT dsh.id, c.depth + 1
        FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
-       WHERE c.depth < 2
+       WHERE c.depth < 2 AND dsh.is_active = true
      )
      SELECT r.*, u.name as owner_name, a.account_name
      FROM risks r
@@ -53,7 +53,7 @@ export async function buildSnapshotContent(dashboardId: string) {
        UNION ALL
        SELECT dsh.id, c.depth + 1
        FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
-       WHERE c.depth < 2
+       WHERE c.depth < 2 AND dsh.is_active = true
      )
      SELECT d.*, u.name as owner_name, a.account_name
      FROM decisions d
@@ -71,7 +71,7 @@ export async function buildSnapshotContent(dashboardId: string) {
        UNION ALL
        SELECT dsh.id, c.depth + 1
        FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
-       WHERE c.depth < 2
+       WHERE c.depth < 2 AND dsh.is_active = true
      )
      SELECT t.*, u.name as owner_name, cat.name as category_name, a.account_name
      FROM tasks t
@@ -91,7 +91,7 @@ export async function buildSnapshotContent(dashboardId: string) {
        UNION ALL
        SELECT dsh.id, c.depth + 1
        FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
-       WHERE c.depth < 2
+       WHERE c.depth < 2 AND dsh.is_active = true
      )
      SELECT r.*, u.name as owner_name, a.account_name
      FROM risks r
@@ -110,7 +110,7 @@ export async function buildSnapshotContent(dashboardId: string) {
        UNION ALL
        SELECT dsh.id, c.depth + 1
        FROM dashboards dsh JOIN child_dashboards c ON dsh.parent_dashboard_id = c.id
-       WHERE c.depth < 2
+       WHERE c.depth < 2 AND dsh.is_active = true
      )
      SELECT d.*, u.name as owner_name, a.account_name
      FROM decisions d

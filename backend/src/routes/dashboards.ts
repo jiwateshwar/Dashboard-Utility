@@ -97,6 +97,9 @@ router.get("/", async (req, res) => {
   const userId = req.session.userId!;
   const role = await getUserRole(userId);
   const isAdmin = isAdminRole(role);
+  // Deleted (deactivated) dashboards are hidden everywhere; only admin screens
+  // ask for them, so they can be shown as deactivated and restored.
+  const includeInactive = isAdmin && req.query.include_inactive === "1";
 
   const { rows } = await query(
     `SELECT d.*,
@@ -112,8 +115,9 @@ router.get("/", async (req, res) => {
        EXISTS(SELECT 1 FROM dashboard_access_requests WHERE dashboard_id = d.id AND user_id = $1 AND status = 'Pending') AS has_pending_request
      FROM dashboards d
      LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
+     WHERE $2::boolean OR d.is_active = true
      ORDER BY d.name`,
-    [userId]
+    [userId, includeInactive]
   );
 
   res.json(rows.map((r) => ({
@@ -412,7 +416,7 @@ router.get("/:id", async (req, res) => {
        EXISTS(SELECT 1 FROM dashboard_owners WHERE dashboard_id = d.id AND user_id = $3) AS is_owner
      FROM dashboards d
      LEFT JOIN dashboards pd ON pd.id = d.parent_dashboard_id
-     WHERE d.id = $1 AND ($2 OR d.id IN (
+     WHERE d.id = $1 AND (d.is_active = true OR $2) AND ($2 OR d.id IN (
        SELECT dashboard_id FROM dashboard_owners WHERE user_id = $3
        UNION
        SELECT dashboard_id FROM dashboard_access WHERE user_id = $3
@@ -559,6 +563,7 @@ router.get("/:id/summary", async (req, res) => {
        SELECT id FROM dashboards WHERE id = $1
        UNION ALL
        SELECT d.id FROM dashboards d JOIN children c ON d.parent_dashboard_id = c.id
+       WHERE d.is_active = true
      ),
      t AS (
        SELECT 'task' AS kind, status::text AS status, target_date::text AS deadline, created_at, NULL::text AS impact_level

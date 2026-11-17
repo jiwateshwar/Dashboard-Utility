@@ -87,7 +87,7 @@ router.get("/", async (req, res) => {
        UNION ALL
        SELECT d.id, d.name, c.rel_depth + 1
        FROM dashboards d JOIN child_dashboards c ON d.parent_dashboard_id = c.id
-       WHERE c.rel_depth < 2
+       WHERE c.rel_depth < 2 AND d.is_active = true
      )
      SELECT t.*, u.name as owner_name,
             cd.name as source_dashboard_name, cd.id as source_dashboard_id,
@@ -152,7 +152,7 @@ router.get("/by-tag", async (req, res) => {
      FROM tasks t
      JOIN task_tags tt ON tt.task_id = t.id AND tt.tag = $1
      JOIN users u ON u.id = t.owner_id
-     JOIN dashboards d ON d.id = t.dashboard_id
+     JOIN dashboards d ON d.id = t.dashboard_id AND d.is_active = true
      WHERE t.is_archived = false
        AND ($4::boolean IS TRUE OR
          t.publish_flag = true OR

@@ -19,7 +19,7 @@ export async function pendingApprovalsFor(viewerId: string, where: string, param
             COALESCE((SELECT array_agg(tg.tag ORDER BY tg.tag) FROM task_tags tg WHERE tg.task_id = t.id), ARRAY[]::text[]) AS tags,
             COALESCE(t.closure_requested_at, t.updated_at) + make_interval(days => ${AUTO_CLOSE_AFTER_DAYS}) AS auto_close_at
      FROM tasks t
-     JOIN dashboards d ON d.id = t.dashboard_id
+     JOIN dashboards d ON d.id = t.dashboard_id AND d.is_active = true
      LEFT JOIN accounts a ON a.id = t.account_id
      LEFT JOIN users cu ON cu.id = t.created_by
      WHERE t.status = 'Closed Pending Approval' AND t.is_archived = false

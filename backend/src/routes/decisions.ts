@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
        UNION ALL
        SELECT d2.id, d2.name, c.rel_depth + 1
        FROM dashboards d2 JOIN child_dashboards c ON d2.parent_dashboard_id = c.id
-       WHERE c.rel_depth < 2
+       WHERE c.rel_depth < 2 AND d2.is_active = true
      )
      SELECT d.*, u.name as owner_name,
             cd.name as source_dashboard_name, cd.id as source_dashboard_id
