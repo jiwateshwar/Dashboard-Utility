@@ -10,5 +10,7 @@ declare module "express-session" {
       codeVerifier: string;
       createdAt: number;
     };
+    /** In-app path to land on after SSO login (e.g. a task link from an email). */
+    ssoReturnTo?: string;
   }
 }

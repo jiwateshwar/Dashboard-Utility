@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ComboBox } from "./ComboBox";
 import { getUpcomingWeekStarts, formatWeekLabel } from "../lib/weeks";
+import { useRememberedState } from "../lib/navMemory";
 
-const STATUS_OPTIONS = ["Open", "In Progress", "Closed Pending Approval", "Closed Accepted", "Dropped"];
+const STATUS_OPTIONS = ["Open", "In Progress", "Parked", "Closed Pending Approval", "Closed Accepted", "Dropped"];
 const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "target_date", label: "Due Date" },
   { value: "created_at", label: "Created Date" },
@@ -23,14 +24,14 @@ function taskOwnerIds(t: any): string[] {
 }
 
 export function TaskFilterBar({ tasks, users, accounts, onFilteredChange }: TaskFilterBarProps) {
-  const [createdBy, setCreatedBy] = useState<string[]>([]);
-  const [ownerIds, setOwnerIds] = useState<string[]>([]);
-  const [focusWeek, setFocusWeek] = useState("");
-  const [status, setStatus] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [accountIds, setAccountIds] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState("target_date");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [createdBy, setCreatedBy] = useRememberedState<string[]>("tf.createdBy", []);
+  const [ownerIds, setOwnerIds] = useRememberedState<string[]>("tf.owners", []);
+  const [focusWeek, setFocusWeek] = useRememberedState("tf.focusWeek", "");
+  const [status, setStatus] = useRememberedState("tf.status", "");
+  const [tags, setTags] = useRememberedState<string[]>("tf.tags", []);
+  const [accountIds, setAccountIds] = useRememberedState<string[]>("tf.accounts", []);
+  const [sortBy, setSortBy] = useRememberedState("tf.sortBy", "target_date");
+  const [sortDir, setSortDir] = useRememberedState<"asc" | "desc">("tf.sortDir", "asc");
 
   const userOptions = useMemo(() => users.map((u) => ({ id: u.id, label: u.name })), [users]);
   const accountOptions = useMemo(() => accounts.map((a) => ({ id: a.id, label: a.account_name })), [accounts]);

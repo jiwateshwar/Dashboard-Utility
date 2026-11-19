@@ -35,6 +35,9 @@ async function loadRules(dashboardId: string): Promise<Rule[]> {
   return rows as any[];
 }
 
+// Closed tasks never age; Parked ones are on hold on purpose, so they don't either.
+const NOT_AGING_TASK_STATUSES = [...CLOSED_TASK_STATUSES, "Parked"];
+
 async function runDefaultRules(
   dash: { id: string; primary_owner_id: string },
   userMap: Map<string, { manager_id: string | null }>
@@ -43,7 +46,7 @@ async function runDefaultRules(
     `SELECT t.id, t.owner_id, t.created_at, t.title, t.item_details
      FROM tasks t
      WHERE t.dashboard_id = $1 AND t.is_archived = false AND NOT (t.status::text = ANY($2))`,
-    [dash.id, CLOSED_TASK_STATUSES]
+    [dash.id, NOT_AGING_TASK_STATUSES]
   );
   for (const task of tasks.rows) {
     const ageDays = dayjs().diff(dayjs(task.created_at), "day");
@@ -90,7 +93,7 @@ async function runRule(
       `SELECT t.id, t.owner_id, t.created_at, t.title, t.item_details
        FROM tasks t
        WHERE t.dashboard_id = $1 AND t.is_archived = false AND NOT (t.status::text = ANY($2))`,
-      [dash.id, CLOSED_TASK_STATUSES]
+      [dash.id, NOT_AGING_TASK_STATUSES]
     );
     for (const task of tasks.rows) {
       const ageDays = dayjs().diff(dayjs(task.created_at), "day");

@@ -7,11 +7,13 @@ import { FocusWeekSelect } from "../components/FocusWeekSelect";
 import { TaskFilterBar } from "../components/TaskFilterBar";
 import { HashtagChips } from "../components/HashtagChips";
 import { formatWeekLabel } from "../lib/weeks";
+import { TaskTitle } from "../components/TaskTitle";
+import { useRememberedState } from "../lib/navMemory";
 
 
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
-const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", "Closed Pending Approval": "amber", "Closed Accepted": "green", Dropped: "grey" };
+const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", Parked: "grey", "Closed Pending Approval": "amber", "Closed Accepted": "green", Dropped: "grey" };
 
 function fmt(dateStr?: string) {
   if (!dateStr) return "—";
@@ -28,7 +30,8 @@ function daysPastDue(targetDate?: string): number {
 
 /** Coloured chip showing overdue severity. Returns null if on track. */
 function AgingChip({ targetDate, status }: { targetDate?: string; status?: string }) {
-  const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped"];
+  // Parked tasks are on hold and never shown as overdue.
+  const closed = ["Closed Accepted", "Closed Pending Approval", "Dropped", "Parked"];
   if (!targetDate || (status && closed.includes(status))) return null;
   const days = daysPastDue(targetDate);
   if (days <= 0) return null;
@@ -89,7 +92,7 @@ export default function DashboardDetailPage() {
   const [createError, setCreateError] = useState<{ form: "task" | "risk" | "decision"; message: string } | null>(null);
   const formError = (form: "task" | "risk" | "decision") =>
     createError?.form === form ? <div role="alert" style={{ color: "#ef6a62", fontSize: 13, fontWeight: 500, margin: "0 0 8px 0" }}>{createError.message}</div> : null;
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = useRememberedState("dash.archived", false);
   const [accessRequests, setAccessRequests] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
 
@@ -506,6 +509,7 @@ export default function DashboardDetailPage() {
               <select className="select" value={taskEditForm.status} onChange={(e) => setTaskEditForm({ ...taskEditForm, status: e.target.value })}>
                 <option value="Open">Open</option>
                 <option value="In Progress">In Progress</option>
+                <option value="Parked">Parked</option>
                 <option value="Closed Pending Approval">Closed Pending Approval</option>
                 <option value="Closed Accepted" disabled>Closed Accepted (use Approve)</option>
                 <option value="Dropped">Dropped</option>
@@ -772,10 +776,7 @@ export default function DashboardDetailPage() {
                   <Fragment key={t.id}>
                     <tr style={editing ? { background: "rgba(29,99,237,0.06)" } : undefined}>
                       <td>{own ? catName(t.category_id) : "—"}</td>
-                      <td>
-                        {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
-                        <div>{t.item_details}</div>
-                      </td>
+                      <td><TaskTitle task={t} /></td>
                       <td>{acctName(t.account_id)}</td>
                       <td>{ownerNames(t)}</td>
                       <td>{ownerName(t.created_by)}</td>

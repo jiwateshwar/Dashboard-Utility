@@ -43,7 +43,10 @@ export default function LoginPage({ onAuthed }: { onAuthed: (user: any) => void 
   }, []);
 
   function handleMicrosoftSignIn() {
-    window.location.href = `${API_URL}/api/auth/entra/login`;
+    // Come back to the page the user was opening (e.g. a task link from an email).
+    const here = window.location.pathname + window.location.search;
+    const returnTo = here && here !== "/" ? `?returnTo=${encodeURIComponent(here)}` : "";
+    window.location.href = `${API_URL}/api/auth/entra/login${returnTo}`;
   }
 
   async function handleEmail() {

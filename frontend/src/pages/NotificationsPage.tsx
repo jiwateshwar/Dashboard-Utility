@@ -5,6 +5,7 @@ import { api } from "../api";
 const TYPE_LABELS: Record<string, string> = {
   task_assigned: "Task Assigned",
   task_status_changed: "Status Change",
+  task_update_posted: "Task Update",
   dashboard_assigned: "Dashboard Access",
   task_overdue: "Overdue",
 };
@@ -12,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_CLASS: Record<string, string> = {
   task_assigned: "green",
   task_status_changed: "amber",
+  task_update_posted: "green",
   dashboard_assigned: "green",
   task_overdue: "red",
 };
@@ -65,7 +67,7 @@ export default function NotificationsPage() {
                 }}
               >
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: n.is_read ? 400 : 600, fontSize: 14 }}>{n.message}</div>
+                  <div style={{ fontWeight: n.is_read ? 400 : 600, fontSize: 14, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{n.message}</div>
                   <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
                     {fmt(n.created_at)}
                     {n.dashboard_name && <> · {n.dashboard_name}</>}
@@ -76,8 +78,10 @@ export default function NotificationsPage() {
                 </span>
               </div>
             );
-            return n.dashboard_id ? (
-              <Link key={n.id} to={`/dashboards/${n.dashboard_id}`} style={{ color: "inherit", textDecoration: "none", display: "block" }}>
+            // Task notifications open the task itself; others open their dashboard.
+            const to = n.entity_type === "Task" && n.entity_id ? `/tasks/${n.entity_id}` : n.dashboard_id ? `/dashboards/${n.dashboard_id}` : null;
+            return to ? (
+              <Link key={n.id} to={to} style={{ color: "inherit", textDecoration: "none", display: "block" }}>
                 {content}
               </Link>
             ) : (

@@ -50,9 +50,11 @@ export function PendingApprovalRow({ t, onChanged, showOwner, selectable, select
         {selectable && (
           <input type="checkbox" checked={!!selected} onChange={() => onToggle?.(t.id)} aria-label={`Select ${t.title || t.item_details}`} style={{ flexShrink: 0 }} />
         )}
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setOpen((v) => !v); } }}
           aria-expanded={open}
           style={{
             display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flex: 1, minWidth: 0,
@@ -60,7 +62,9 @@ export function PendingApprovalRow({ t, onChanged, showOwner, selectable, select
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{t.title || t.item_details}</div>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>
+              <Link to={`/tasks/${t.id}`} className="task-link" onClick={(e) => e.stopPropagation()}>{t.title || t.item_details}</Link>
+            </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
               {t.dashboard_name}
               {showOwner && owners !== "—" && ` · ${owners}`}
@@ -72,7 +76,7 @@ export function PendingApprovalRow({ t, onChanged, showOwner, selectable, select
             <span className="tag amber">Awaiting Approval</span>
             <span aria-hidden style={{ color: "var(--muted)", fontSize: 12 }}>{open ? "▲" : "▼"}</span>
           </div>
-        </button>
+        </div>
       </div>
 
       {open && (
@@ -113,6 +117,7 @@ export function PendingApprovalRow({ t, onChanged, showOwner, selectable, select
               ) : (
                 <span style={{ fontSize: 12, color: "var(--muted)" }}>Only {t.created_by_name || "the creator"} (or an admin) can approve this closure.</span>
               )}
+              <Link className="button secondary" to={`/tasks/${t.id}`} style={{ textDecoration: "none" }}>Open task</Link>
               <Link className="button secondary" to={`/dashboards/${t.dashboard_id}`} style={{ textDecoration: "none" }}>Open dashboard</Link>
             </div>
           )}

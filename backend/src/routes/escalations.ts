@@ -86,14 +86,29 @@ const enriched = (base: string) => `
            WHEN 'Risk' THEN ARRAY[r.risk_owner]
            WHEN 'Decision' THEN ARRAY[dc.decision_owner]
          END AS pending_user_ids,
-         (SELECT max(e2.update_requested_at) FROM escalations e2 WHERE e2.entity_id = e.entity_id) AS last_update_requested_at
+         (SELECT max(u.requested_at) FROM escalation_update_requests u WHERE u.entity_id = e.entity_id) AS last_update_requested_at,
+         (SELECT count(*)::int FROM escalation_update_requests u WHERE u.entity_id = e.entity_id) AS reminder_count
   FROM (${base}) e
   JOIN dashboards d ON d.id = e.dashboard_id
   LEFT JOIN tasks t ON e.entity_type = 'Task' AND t.id = e.entity_id
   LEFT JOIN risks r ON e.entity_type = 'Risk' AND r.id = e.entity_id
   LEFT JOIN decisions dc ON e.entity_type = 'Decision' AND dc.id = e.entity_id`;
 
-const UPDATE_REQUEST_COOLDOWN_HOURS = 24;
+// Update requests can be repeated as often as needed; this only stops an
+// accidental double-send (double click, two tabs) from emailing twice.
+const DUPLICATE_GUARD_SECONDS = 60;
+
+const ORDINALS = ["First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth", "Ninth", "Tenth"];
+/** 2 → "Second", 11 → "11th". */
+function ordinal(n: number): string {
+  if (n <= ORDINALS.length) return ORDINALS[n - 1];
+  const s = n % 100 >= 11 && n % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th";
+  return `${n}${s}`;
+}
+/** Button / subject label for the next request, given how many were already sent. */
+function reminderLabel(alreadySent: number): string {
+  return alreadySent === 0 ? "Request update" : `${ordinal(alreadySent + 1)} reminder`;
+}
 
 function isOpen(entityType: string, status: string | null) {
   if (!status) return false; // item deleted
@@ -103,7 +118,7 @@ function isOpen(entityType: string, status: string | null) {
   return false;
 }
 
-/** Adds pending people's names and whether an update can be requested now. */
+/** Adds pending people's names, how many reminders were sent, and the next button label. */
 async function present(rows: any[]) {
   const ids = [...new Set(rows.flatMap((r) => r.pending_user_ids ?? []).filter(Boolean))];
   const names = new Map<string, string>();
@@ -113,14 +128,14 @@ async function present(rows: any[]) {
   }
   return rows.map((r) => {
     const open = isOpen(r.entity_type, r.entity_status);
-    const last = r.last_update_requested_at ? new Date(r.last_update_requested_at).getTime() : 0;
-    const nextAllowedAt = last ? new Date(last + UPDATE_REQUEST_COOLDOWN_HOURS * 3600_000) : null;
+    const sent = Number(r.reminder_count ?? 0);
     return {
       ...r,
       is_open: open,
       pending: (r.pending_user_ids ?? []).filter(Boolean).map((id: string) => ({ id, name: names.get(id) ?? "Unknown" })),
-      can_request_update: open && (!nextAllowedAt || nextAllowedAt.getTime() <= Date.now()),
-      next_request_allowed_at: nextAllowedAt
+      can_request_update: open,
+      reminder_count: sent,
+      next_request_label: reminderLabel(sent)
     };
   });
 }
@@ -156,7 +171,7 @@ router.get("/mine", async (req, res) => {
 
 // Emails the people an escalated item is waiting on, with the requester in CC
 // and as Reply-To, asking them to update it. Also notifies them in-app.
-// Limited to once per item per 24 hours so it can't be used to spam.
+// Can be repeated; each repeat is labelled "Second reminder", "Third reminder"...
 router.post("/:id/request-update", async (req, res) => {
   const userId = req.session.userId!;
   const note = String((req.body as any)?.note ?? "").trim().slice(0, 1000);
@@ -168,9 +183,16 @@ router.post("/:id/request-update", async (req, res) => {
   const allowed = esc.notified_user_id === userId || (await requireOwnerOrAdmin(userId, esc.dashboard_id));
   if (!allowed) return res.status(403).json({ error: "Only the person this was escalated to, a dashboard owner, or an admin can request an update" });
   if (!esc.is_open) return res.status(400).json({ error: "This item is already closed — no update needed" });
-  if (!esc.can_request_update) {
-    return res.status(429).json({ error: `An update was already requested in the last ${UPDATE_REQUEST_COOLDOWN_HOURS} hours`, next_request_allowed_at: esc.next_request_allowed_at });
+  const lastAt = esc.last_update_requested_at ? new Date(esc.last_update_requested_at) : null;
+  if (lastAt && Date.now() - lastAt.getTime() < DUPLICATE_GUARD_SECONDS * 1000) {
+    return res.status(429).json({ error: "A reminder for this item was sent less than a minute ago" });
   }
+  const sentBefore = Number(esc.reminder_count ?? 0);
+  const number = sentBefore + 1; // this request's number: 1 = first, 2 = second reminder...
+  const isRepeat = number > 1;
+  const reminderWord = ordinal(number).toLowerCase(); // "second"
+  const subjectPrefix = isRepeat ? `${ordinal(number)} reminder — ` : "";
+  const lastText = lastAt ? lastAt.toISOString().slice(0, 10) : null;
 
   const recipients = esc.pending.filter((p: any) => p.id !== userId);
   if (recipients.length === 0) return res.status(400).json({ error: "There's nobody else this item is waiting on" });
@@ -186,7 +208,9 @@ router.post("/:id/request-update", async (req, res) => {
   for (const p of recipients) {
     await notifyUser({
       userId: p.id,
-      message: `${requester.name} asked for an update on ${kind} "${esc.label}" in ${esc.dashboard_name}.${note ? ` Note: ${note}` : ""}`,
+      message: isRepeat
+        ? `${ordinal(number)} reminder: ${requester.name} is still waiting for an update on ${kind} "${esc.label}" in ${esc.dashboard_name}.${note ? ` Note: ${note}` : ""}`
+        : `${requester.name} asked for an update on ${kind} "${esc.label}" in ${esc.dashboard_name}.${note ? ` Note: ${note}` : ""}`,
       type: "update_requested",
       entityType: esc.entity_type,
       entityId: esc.entity_id,
@@ -204,12 +228,15 @@ router.post("/:id/request-update", async (req, res) => {
     }
     if (addresses.length > 0) {
       const baseUrl = await getAppBaseUrl();
+      const itemUrl = esc.entity_type === "Task" ? `${baseUrl}/tasks/${esc.entity_id}` : `${baseUrl}/dashboards/${esc.dashboard_id}`;
       const dueText = esc.due_date ? new Date(esc.due_date).toISOString().slice(0, 10) : "—";
       const { html, text } = renderEmail({
-        heading: `Update requested: ${esc.label}`,
+        heading: `${subjectPrefix}Update requested: ${esc.label}`,
         intro: [
           `Hi ${recipients.map((p: any) => p.name.split(" ")[0]).join(", ")},`,
-          `${requester.name} has asked for an update on this ${kind} in ${esc.dashboard_name}. It was escalated because: ${esc.message}.`,
+          isRepeat
+            ? `This is the ${reminderWord} reminder: ${requester.name} is still waiting for an update on this ${kind} in ${esc.dashboard_name}${lastText ? ` (last asked on ${lastText})` : ""}. It was escalated because: ${esc.message}.`
+            : `${requester.name} has asked for an update on this ${kind} in ${esc.dashboard_name}. It was escalated because: ${esc.message}.`,
           ...(note ? [`Note from ${requester.name.split(" ")[0]}: "${note}"`] : []),
           ask
         ].join("\n"),
@@ -217,9 +244,9 @@ router.post("/:id/request-update", async (req, res) => {
           title: "Item",
           columns: ["Item", "Dashboard", "Status", esc.entity_type === "Decision" ? "Deadline" : "Due", "Waiting on"],
           rows: [[esc.label, esc.dashboard_name, esc.entity_status, dueText, esc.pending.map((p: any) => p.name).join(", ")]],
-          rowUrls: [`${baseUrl}/dashboards/${esc.dashboard_id}`]
+          rowUrls: [itemUrl]
         }],
-        ctaUrl: `${baseUrl}/dashboards/${esc.dashboard_id}`,
+        ctaUrl: itemUrl,
         ctaLabel: `Update ${kind}`,
         baseUrl,
         reason: `${requester.name} is copied on this email.`,
@@ -232,26 +259,33 @@ router.post("/:id/request-update", async (req, res) => {
         replyTo: requester.email || undefined,
         userId: null,
         category: "update_requests",
-        subject: `Update requested: ${esc.label}`,
+        subject: `${subjectPrefix}Update requested: ${esc.label}`,
         html,
         text,
-        dedupeKey: `update-req:${esc.entity_id}:${new Date().toISOString().slice(0, 10)}`
+        dedupeKey: `update-req:${esc.entity_id}:${number}`
       });
       void processOutbox();
     }
   }
 
   await query(`UPDATE escalations SET update_requested_at = now(), update_requested_by = $2 WHERE id = $1`, [esc.id, userId]);
+  await query(
+    `INSERT INTO escalation_update_requests (escalation_id, entity_type, entity_id, requested_by, note) VALUES ($1, $2, $3, $4, $5)`,
+    [esc.id, esc.entity_type, esc.entity_id, userId, note || null]
+  );
   await logAudit({ entityType: esc.entity_type, entityId: esc.entity_id, changedBy: userId, oldValue: null,
-    newValue: { action: "update_requested", recipients: recipients.map((p: any) => p.name), note: note || undefined } });
+    newValue: { action: "update_requested", reminder_number: number, recipients: recipients.map((p: any) => p.name), note: note || undefined } });
 
+  const what = isRepeat ? `${ordinal(number)} reminder sent to` : "Update requested from";
   res.json({
     ok: true,
     notified: recipients.map((p: any) => p.name),
     emailed,
+    reminder_count: number,
+    next_request_label: reminderLabel(number),
     message: emailed.length
-      ? `Update requested from ${emailed.join(", ")} by email (you're in CC).`
-      : `Update requested from ${recipients.map((p: any) => p.name).join(", ")} in PRISM (email is off or they have no email address).`
+      ? `${what} ${emailed.join(", ")} by email (you're in CC).`
+      : `${what} ${recipients.map((p: any) => p.name).join(", ")} in PRISM (email is off or they have no email address).`
   });
 });
 

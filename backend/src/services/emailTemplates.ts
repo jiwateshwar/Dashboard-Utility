@@ -40,7 +40,20 @@ export type Table = {
   rows: (string | number)[][];
   /** Optional link per row (applied to the first cell). */
   rowUrls?: (string | undefined)[];
+  /** "details": label/value pairs (rows of [label, value]), no header row. */
+  layout?: "grid" | "details";
 };
+
+function detailsHtml(t: Table): string {
+  const body = t.rows
+    .map(([label, value]) => `<tr><td style="vertical-align:top;width:120px;font-size:12px;color:${MUTED};padding:7px 12px 7px 0;border-bottom:1px solid ${BORDER};">${esc(label)}</td><td style="vertical-align:top;font-size:14px;padding:7px 0;border-bottom:1px solid ${BORDER};white-space:pre-wrap;">${esc(value)}</td></tr>`)
+    .join("");
+  return `
+  <div style="background:#fff;border:1px solid ${BORDER};border-radius:8px;padding:14px 18px;margin-bottom:14px;">
+    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${MUTED};margin-bottom:6px;">${esc(t.title)}</div>
+    <table style="width:100%;border-collapse:collapse;"><tbody>${body}</tbody></table>
+  </div>`;
+}
 
 function sectionHtml(s: Section): string {
   if (s.items.length === 0) return "";
@@ -76,6 +89,7 @@ function sectionHtml(s: Section): string {
 
 function tableHtml(t: Table): string {
   if (t.rows.length === 0) return "";
+  if (t.layout === "details") return detailsHtml(t);
   const head = t.columns
     .map((c, i) => `<th style="text-align:${i === 0 ? "left" : "right"};font-size:11px;color:${MUTED};text-transform:uppercase;padding:6px 8px;border-bottom:1px solid ${BORDER};">${esc(c)}</th>`)
     .join("");
@@ -149,8 +163,13 @@ export function renderEmail(params: {
   if (intro) lines.push(intro, "");
   for (const t of tables) {
     if (t.rows.length === 0) continue;
-    lines.push(t.title.toUpperCase(), t.columns.join(" | "));
-    for (const r of t.rows) lines.push(r.join(" | "));
+    if (t.layout === "details") {
+      lines.push(t.title.toUpperCase());
+      for (const [label, value] of t.rows) lines.push(`${label}: ${value}`);
+    } else {
+      lines.push(t.title.toUpperCase(), t.columns.join(" | "));
+      for (const r of t.rows) lines.push(r.join(" | "));
+    }
     lines.push("");
   }
   for (const s of sections) {

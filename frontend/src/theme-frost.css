@@ -1,6 +1,6 @@
 /* ── Seasonal theme: Frost (winter) ─────────────────────────────────
    Applied by lib/seasonalTheme.ts, which adds `theme-frost` to <html>
-   from 1 December to the end of February (or always/never, per the
+   from 19 November to the end of February (or always/never, per the
    VITE_SEASONAL_THEME build setting). Every rule is scoped under
    html.theme-frost, so outside the season PRISM looks exactly as usual. */
 @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");

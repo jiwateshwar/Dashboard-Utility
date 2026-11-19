@@ -6,13 +6,14 @@ import { HashtagInput } from "./HashtagInput";
 import { HashtagChips } from "./HashtagChips";
 import { FocusWeekSelect } from "./FocusWeekSelect";
 import { formatWeekLabel } from "../lib/weeks";
+import { TaskTitle } from "./TaskTitle";
 
 // Read-and-edit tables for tasks, risks and decisions spanning several
 // dashboards (Personal and Team views). Same pattern as the dashboard page:
 // one table per type, an Edit button per row that opens the form under it.
 // The server enforces who may change what; errors are shown inline.
 
-const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", "Closed Pending Approval": "amber", "Closed Accepted": "green", Dropped: "grey" };
+const TASK_STATUS_CLASS: Record<string, string> = { Open: "amber", "In Progress": "green", Parked: "grey", "Closed Pending Approval": "amber", "Closed Accepted": "green", Dropped: "grey" };
 const IMPACT_CLASS: Record<string, string> = { Low: "green", Medium: "amber", High: "red", Critical: "red" };
 const DECISION_STATUS_CLASS: Record<string, string> = { Pending: "amber", Approved: "green", Rejected: "red", Deferred: "amber" };
 const d10 = (s?: string) => (s ? s.slice(0, 10) : "—");
@@ -86,11 +87,11 @@ export function EditableTaskTable({ tasks, accounts, users, me, onChanged, showO
               return (
                 <Fragment key={t.id}>
                   <tr style={editing ? { background: "rgba(29,99,237,0.06)" } : undefined}>
-                    <td>{t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}<div>{t.item_details}</div></td>
+                    <td><TaskTitle task={t} /></td>
                     <td><DashCell row={t} /></td>
                     <td>{acct(t.account_id)}</td>
                     {showOwners && <td>{Array.isArray(t.owner_names) ? t.owner_names.filter(Boolean).join(", ") : "—"}</td>}
-                    <td><div>{d10(t.target_date)}</div><OverdueChip date={t.target_date} done={["Closed Accepted", "Closed Pending Approval", "Dropped"].includes(t.status)} /></td>
+                    <td><div>{d10(t.target_date)}</div><OverdueChip date={t.target_date} done={["Closed Accepted", "Closed Pending Approval", "Dropped", "Parked"].includes(t.status)} /></td>
                     <td style={{ whiteSpace: "nowrap" }}>{t.focus_week_start ? formatWeekLabel(t.focus_week_start.slice(0, 10)) : "—"}</td>
                     <td><HashtagChips tags={t.tags} /></td>
                     <td><span className={`tag ${TASK_STATUS_CLASS[t.status] ?? "amber"}`}>{t.status}</span></td>
@@ -109,6 +110,7 @@ export function EditableTaskTable({ tasks, accounts, users, me, onChanged, showO
                           <select className="select" value={f.status} onChange={(e) => set({ status: e.target.value })}>
                             <option value="Open">Open</option>
                             <option value="In Progress">In Progress</option>
+                            <option value="Parked">Parked</option>
                             <option value="Closed Pending Approval">Closed Pending Approval</option>
                             <option value="Closed Accepted" disabled>Closed Accepted (use Approve)</option>
                             <option value="Dropped">Dropped</option>

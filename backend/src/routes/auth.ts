@@ -84,6 +84,13 @@ router.post("/verify", async (req, res) => {
 
 // ── Entra ID (Azure AD) SSO ──────────────────────────────────────
 
+/** Accepts only an in-app path ("/tasks/…"), never another site ("//evil", "https://…"). */
+function safeReturnPath(v: unknown): string | undefined {
+  if (typeof v !== "string" || v.length > 500) return undefined;
+  if (!v.startsWith("/") || v.startsWith("//") || v.startsWith("/\\") || v.startsWith("/api")) return undefined;
+  return v;
+}
+
 router.get("/entra/login", async (req, res) => {
   if (!(await isSsoEnabled())) {
     return res.status(501).json({ error: "SSO is not configured" });
@@ -96,6 +103,7 @@ router.get("/entra/login", async (req, res) => {
     const redirectUri = `${origin}/api/auth/entra/callback`;
     const { url, authState } = await buildLoginRedirect(redirectUri);
     req.session.entraAuth = authState;
+    req.session.ssoReturnTo = safeReturnPath(req.query.returnTo);
     req.session.save((err) => {
       if (err) {
         console.error("[entra] failed to save session before redirect:", err);
@@ -127,6 +135,8 @@ router.get("/entra/callback", async (req, res) => {
     return failureRedirect("expired");
   }
   req.session.entraAuth = undefined;
+  const returnTo = req.session.ssoReturnTo ?? "/";
+  req.session.ssoReturnTo = undefined;
 
   let claims;
   try {
@@ -170,7 +180,7 @@ router.get("/entra/callback", async (req, res) => {
       [tenantId, oid]
     );
     await completeLogin(u.id);
-    return res.redirect(returnOrigin);
+    return res.redirect(`${returnOrigin}${returnTo}`);
   }
 
   // 2) No identity link yet — try to auto-link by exact email match.
@@ -189,7 +199,7 @@ router.get("/entra/callback", async (req, res) => {
       [u.id, tenantId, oid, email]
     );
     await completeLogin(u.id);
-    return res.redirect(returnOrigin);
+    return res.redirect(`${returnOrigin}${returnTo}`);
   }
 
   // 3) No matching account at all — route into the existing signup-request approval flow.

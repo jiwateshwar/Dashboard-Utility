@@ -1,13 +1,17 @@
 /**
  * Seasonal look. Not a user setting: the Frost (winter) theme switches on by
- * itself from 1 December to the end of February, judged by the viewer's
+ * itself from 19 November to the end of February, judged by the viewer's
  * clock. The build setting VITE_SEASONAL_THEME can force it: "auto"
  * (default, by date), "frost" (always on, e.g. to preview it) or "off".
  */
 type Mode = "auto" | "frost" | "off";
 
+// Season starts on this day of November (month index 10).
+const FROST_START_NOV_DAY = 19;
+
 export function isWinter(d = new Date()): boolean {
   const m = d.getMonth(); // 0 = January
+  if (m === 10) return d.getDate() >= FROST_START_NOV_DAY; // late November
   return m === 11 || m === 0 || m === 1; // December, January, February
 }
 

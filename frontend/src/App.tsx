@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { api, ApiError } from "./api";
 import LoginPage from "./pages/LoginPage";
+import TaskDetailPage from "./pages/TaskDetailPage";
+import { ScrollMemory } from "./lib/navMemory";
 import DashboardsPage from "./pages/DashboardsPage";
 import DashboardDetailPage from "./pages/DashboardDetailPage";
 import PersonalPage from "./pages/PersonalPage";
@@ -158,9 +160,11 @@ export default function App() {
           </div>
         </div>
         <main className="main">
+          <ScrollMemory />
           <Routes>
             <Route path="/" element={<DashboardsPage />} />
             <Route path="/dashboards/:id" element={<DashboardDetailPage />} />
+            <Route path="/tasks/:id" element={<TaskDetailPage />} />
             <Route path="/personal" element={<PersonalPage />} />
             <Route path="/team" element={<TeamPage />} />
             <Route path="/search" element={<SearchPage />} />

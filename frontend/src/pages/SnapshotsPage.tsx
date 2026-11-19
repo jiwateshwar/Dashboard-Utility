@@ -14,7 +14,7 @@ function daysUntil(d?: string) {
 
 const STATUS_CLASS: Record<string, string> = {
   "Open": "amber", "In Progress": "green",
-  "Closed Pending Approval": "amber", "Closed Accepted": "green", "Dropped": "grey",
+  "Closed Pending Approval": "amber", "Closed Accepted": "green", "Dropped": "grey", "Parked": "grey",
   "Critical": "red", "High": "red", "Medium": "amber", "Low": "green",
   "Pending": "amber", "Approved": "green", "Rejected": "red", "Deferred": "amber",
   "Mitigated": "green", "Closed": "green"

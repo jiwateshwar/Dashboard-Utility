@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { TaskTitle } from "../components/TaskTitle";
+import { useRememberedState } from "../lib/navMemory";
 
 function fmt(dateStr?: string) {
   if (!dateStr) return "—";
@@ -8,13 +10,14 @@ function fmt(dateStr?: string) {
 }
 
 export default function SearchPage() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any>(null);
-  const [status, setStatus] = useState("");
-  const [rag, setRag] = useState("");
-  const [aging, setAging] = useState("");
+  // Remembered per history entry, so Back from a task returns to these results.
+  const [query, setQuery] = useRememberedState("search.q", "");
+  const [results, setResults] = useRememberedState<any>("search.results", null);
+  const [status, setStatus] = useRememberedState("search.status", "");
+  const [rag, setRag] = useRememberedState("search.rag", "");
+  const [aging, setAging] = useRememberedState("search.aging", "");
   const [dashboards, setDashboards] = useState<any[]>([]);
-  const [dashboardId, setDashboardId] = useState("");
+  const [dashboardId, setDashboardId] = useRememberedState("search.dashboard", "");
   const [searchParams] = useSearchParams();
   const tagParam = searchParams.get("tag");
   const [tagResults, setTagResults] = useState<any[] | null>(null);
@@ -55,6 +58,7 @@ export default function SearchPage() {
           <option value="">Any Status</option>
           <option value="Open">Open</option>
           <option value="In Progress">In Progress</option>
+          <option value="Parked">Parked</option>
           <option value="Closed Pending Approval">Closed Pending Approval</option>
           <option value="Closed Accepted">Closed Accepted</option>
           <option value="Dropped">Dropped</option>
@@ -90,10 +94,7 @@ export default function SearchPage() {
               <tbody>
                 {tagResults.map((t) => (
                   <tr key={t.id}>
-                    <td>
-                      {t.title && <div style={{ fontWeight: 700 }}>{t.title}</div>}
-                      <div>{t.item_details}</div>
-                    </td>
+                    <td><TaskTitle task={t} /></td>
                     <td>{t.dashboard_name}</td>
                     <td>{t.owner_name}</td>
                     <td>{fmt(t.target_date)}</td>
@@ -111,7 +112,7 @@ export default function SearchPage() {
           <div className="card">
             <h3>Tasks</h3>
             {results.tasks.map((t: any) => (
-              <div key={t.id}>{t.title}</div>
+              <div key={t.id}><Link to={`/tasks/${t.id}`} className="task-link">{t.title}</Link></div>
             ))}
           </div>
           <div className="card">

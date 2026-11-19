@@ -6,17 +6,19 @@ import { getSubordinateIds } from "../services/hierarchy.js";
 import { getUserRole, hasDashboardAccess, isDashboardOwner, canEditDashboard, isAdminRole } from "../services/permission.js";
 import { logAudit } from "../services/auditing.js";
 import { notifyUser, notifyUsers, getAdminIds } from "../services/notifying.js";
+import { canViewTask, taskDetailFor, buildTimeline, taskSnapshot, snapshotDiff } from "../services/taskDetail.js";
 
 const router = Router();
 router.use(requireAuth);
 
 async function notifyNewOwners(params: { taskId: string; dashboardId: string; dashboardName: string; label: string; newOwnerIds: string[]; actorUserId: string }) {
   const { taskId, dashboardId, dashboardName, label, newOwnerIds, actorUserId } = params;
+  const actorName = (await query(`SELECT name FROM users WHERE id = $1`, [actorUserId])).rows[0]?.name;
   for (const oid of newOwnerIds) {
     if (oid === actorUserId) continue;
     await notifyUser({
       userId: oid,
-      message: `You were assigned a task in ${dashboardName}: ${label}`,
+      message: `${actorName ?? "Someone"} assigned you a task in ${dashboardName}: ${label}`,
       type: "task_assigned",
       entityType: "Task",
       entityId: taskId,
@@ -293,7 +295,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const userId = req.session.userId!;
-  const { title, item_details, owner_ids, target_date, publish_flag, status, category_id, tags, focus_week_start } = req.body as any;
+  const { title, item_details, owner_ids, target_date, publish_flag, status, category_id, account_id, tags, focus_week_start } = req.body as any;
 
   const task = await query(
     `SELECT t.dashboard_id, t.owner_id, t.created_by, t.status, t.focus_week_start, t.title, t.item_details, d.name as dashboard_name
@@ -309,6 +311,20 @@ router.patch("/:id", async (req, res) => {
 
   const canEdit = await canEditDashboard(userId, dashboardId);
   if (!canEdit) return res.status(403).json({ error: "No edit access" });
+  const beforeSnap = await taskSnapshot(id);
+
+  // Account and SLA were sent by every edit form but never saved before.
+  if (account_id && beforeSnap && account_id !== beforeSnap.account_id) {
+    const acct = await query(`SELECT is_active FROM accounts WHERE id = $1`, [account_id]);
+    if (acct.rows.length === 0) return res.status(400).json({ error: "Unknown account" });
+    if (acct.rows[0].is_active === false) return res.status(400).json({ error: "Account is deactivated" });
+  }
+  const slaProvided = Object.prototype.hasOwnProperty.call(req.body, "sla_days");
+  const slaRaw = (req.body as any).sla_days;
+  const slaValue = slaRaw === "" || slaRaw == null ? null : Number.parseInt(String(slaRaw), 10);
+  if (slaProvided && slaValue !== null && (!Number.isFinite(slaValue) || slaValue < 0 || slaValue > 3650)) {
+    return res.status(400).json({ error: "SLA days must be a whole number of days" });
+  }
 
   // 'Closed Accepted' must only be reached via POST /:id/approve, which enforces who may
   // accept a closure and records closure_approved_by — PATCH bypassed that entirely before.
@@ -369,6 +385,8 @@ router.patch("/:id", async (req, res) => {
          status = COALESCE($7, status),
          category_id = COALESCE($8, category_id),
          focus_week_start = CASE WHEN $9 THEN $10 ELSE focus_week_start END,
+         account_id = COALESCE($11, account_id),
+         sla_days = CASE WHEN $12 THEN $13 ELSE sla_days END,
          closure_approved_at = CASE
            WHEN $7 = 'Dropped' AND closure_approved_at IS NULL THEN now()
            ELSE closure_approved_at
@@ -381,7 +399,7 @@ router.patch("/:id", async (req, res) => {
          END,
          updated_at = now()
      WHERE id = $1`,
-    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null, focusWeekProvided, focus_week_start || null]
+    [id, title || null, item_details || null, primaryOwnerId, target_date || null, publish_flag, status || null, category_id || null, focusWeekProvided, focus_week_start || null, account_id || null, slaProvided, slaValue]
   );
 
   if (ownerIdList && ownerIdList.length > 0) {
@@ -406,7 +424,19 @@ router.patch("/:id", async (req, res) => {
     });
   }
 
-  await logAudit({ entityType: "Task", entityId: id, changedBy: userId, oldValue: task.rows[0], newValue: req.body });
+  // Record exactly what changed (full before/after of the changed fields) for the task's history.
+  const afterSnap = await taskSnapshot(id);
+  if (beforeSnap && afterSnap) {
+    const diff = snapshotDiff(beforeSnap, afterSnap);
+    const keys = Object.keys(diff);
+    if (keys.length > 0) {
+      await logAudit({
+        entityType: "Task", entityId: id, changedBy: userId,
+        oldValue: Object.fromEntries(keys.map((k) => [k, (beforeSnap as any)[k]])),
+        newValue: { _v: 2, ...Object.fromEntries(keys.map((k) => [k, (afterSnap as any)[k]])) }
+      });
+    }
+  }
 
   res.json({ ok: true });
 });
@@ -433,6 +463,8 @@ router.post("/:id/close-request", async (req, res) => {
      WHERE id = $1`,
     [id]
   );
+
+  await logAudit({ entityType: "Task", entityId: id, changedBy: userId, oldValue: null, newValue: { action: "closure_requested" } });
 
   const requester = await query(`SELECT name FROM users WHERE id = $1`, [userId]);
   await notifyUsers([task.rows[0].created_by], {
@@ -533,6 +565,59 @@ router.post("/closure-decisions", async (req, res) => {
   }
   const done = results.filter((r) => r.ok).length;
   res.json({ ok: done === results.length, done, failed: results.filter((r) => !r.ok), results });
+});
+
+// ── Task detail page ────────────────────────────────────────────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+router.get("/:id", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  if (!UUID_RE.test(id)) return res.status(404).json({ error: "Task not found" });
+  if (!(await canViewTask(userId, id))) {
+    const exists = (await query(`SELECT 1 FROM tasks WHERE id = $1`, [id])).rows.length > 0;
+    return exists ? res.status(403).json({ error: "You don't have access to this task" }) : res.status(404).json({ error: "Task not found" });
+  }
+  res.json(await taskDetailFor(userId, id));
+});
+
+router.get("/:id/timeline", async (req, res) => {
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) return res.status(404).json({ error: "Task not found" });
+  if (!(await canViewTask(req.session.userId!, id))) return res.status(403).json({ error: "No access" });
+  res.json(await buildTimeline(id));
+});
+
+router.post("/:id/updates", async (req, res) => {
+  const { id } = req.params;
+  const userId = req.session.userId!;
+  if (!UUID_RE.test(id)) return res.status(404).json({ error: "Task not found" });
+  const body = String((req.body as any)?.body ?? "").replace(/\r\n/g, "\n").trim();
+  if (!body) return res.status(400).json({ error: "Write an update first" });
+  if (body.length > 5000) return res.status(400).json({ error: "Updates are limited to 5,000 characters" });
+  if (!(await canViewTask(userId, id))) return res.status(403).json({ error: "No access" });
+
+  const { rows } = await query(
+    `INSERT INTO task_updates (task_id, author_id, body) VALUES ($1, $2, $3) RETURNING id, created_at`,
+    [id, userId, body]
+  );
+  await query(`UPDATE tasks SET updated_at = now() WHERE id = $1`, [id]);
+
+  // Tell the creator and owners (not the poster).
+  const t = (await query(
+    `SELECT t.created_by, t.owner_id, t.dashboard_id, t.title, t.item_details, d.name AS dashboard_name
+     FROM tasks t JOIN dashboards d ON d.id = t.dashboard_id WHERE t.id = $1`, [id])).rows[0];
+  const owners = await query(`SELECT user_id FROM task_owners WHERE task_id = $1`, [id]);
+  const author = (await query(`SELECT name FROM users WHERE id = $1`, [userId])).rows[0]?.name ?? "Someone";
+  await notifyUsers([t.created_by, t.owner_id, ...owners.rows.map((r: any) => r.user_id)], {
+    message: `${author} posted an update on "${t.title || t.item_details}" in ${t.dashboard_name}:\n${body}`,
+    type: "task_update_posted",
+    entityType: "Task",
+    entityId: id,
+    dashboardId: t.dashboard_id
+  }, userId);
+
+  res.json({ ok: true, id: rows[0].id, created_at: rows[0].created_at });
 });
 
 router.delete("/:id", async (req, res) => {

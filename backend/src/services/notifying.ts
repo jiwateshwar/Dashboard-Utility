@@ -3,10 +3,12 @@ import { query } from "../db.js";
 import { EmailCategory, emailUser } from "./mailer.js";
 import { renderEmail } from "./emailTemplates.js";
 import { getAppBaseUrl } from "./emailSettings.js";
+import { taskDetailsTable, taskPath } from "./taskDetail.js";
 
 export type NotificationType =
   | "task_assigned"
   | "task_status_changed"
+  | "task_update_posted"
   | "task_closure_requested"
   | "task_closure_approved"
   | "task_closure_auto_approved"
@@ -32,15 +34,16 @@ export type NotificationType =
 // tasks and escalations are covered by the daily digest instead of one
 // email per item per day.
 const EMAIL_ROUTING: Partial<Record<NotificationType, { category: EmailCategory; subject: string; cta: string }>> = {
-  task_assigned: { category: "assignments", subject: "You were assigned a task", cta: "View task" },
+  task_assigned: { category: "assignments", subject: "You were assigned a task", cta: "Open task" },
+  task_update_posted: { category: "assignments", subject: "New update on a task", cta: "Open task" },
   dashboard_assigned: { category: "assignments", subject: "Dashboard access updated", cta: "Open dashboard" },
   decision_assigned: { category: "assignments", subject: "You were assigned a decision", cta: "View decision" },
   task_closure_requested: { category: "approvals", subject: "Task closure needs your approval", cta: "Review task" },
   decision_pending: { category: "approvals", subject: "New decision pending approval", cta: "Review decision" },
   access_requested: { category: "approvals", subject: "Dashboard access request", cta: "Review request" },
-  task_closure_approved: { category: "outcomes", subject: "Task closure approved", cta: "View task" },
-  task_closure_rejected: { category: "outcomes", subject: "Task closure rejected — task reopened", cta: "View task" },
-  task_closure_auto_approved: { category: "outcomes", subject: "Task closed automatically (no approval in 3 weeks)", cta: "View task" },
+  task_closure_approved: { category: "outcomes", subject: "Task closure approved", cta: "Open task" },
+  task_closure_rejected: { category: "outcomes", subject: "Task closure rejected — task reopened", cta: "Open task" },
+  task_closure_auto_approved: { category: "outcomes", subject: "Task closed automatically (no approval in 3 weeks)", cta: "Open task" },
   decision_approved: { category: "outcomes", subject: "Decision approved", cta: "View decision" },
   access_reviewed: { category: "outcomes", subject: "Your access request was reviewed", cta: "Open PRISM" },
   delete_reviewed: { category: "outcomes", subject: "Your delete request was reviewed", cta: "Open PRISM" },
@@ -61,7 +64,8 @@ export async function notifyUser(params: {
   entityType?: string;
   entityId?: string;
   dashboardId?: string;
-  /** App path for the email's button, e.g. "/manage". Defaults to the dashboard, else /notifications. */
+  /** App path for the email's button, e.g. "/manage". Defaults to the task page for tasks,
+   *  else the dashboard, else /notifications. */
   link?: string;
   /** Overrides the default email subject for this type. */
   emailSubject?: string;
@@ -79,11 +83,15 @@ export async function notifyUser(params: {
   // that produced the notification.
   try {
     const baseUrl = await getAppBaseUrl();
-    const path = params.link ?? (dashboardId ? `/dashboards/${dashboardId}` : "/notifications");
-    const subject = params.emailSubject ?? route.subject;
+    const isTask = entityType === "Task" && !!entityId;
+    const path = params.link ?? (isTask ? taskPath(entityId!) : dashboardId ? `/dashboards/${dashboardId}` : "/notifications");
+    // Task emails carry the task's full details, so the reader needn't open PRISM to know what it is.
+    const details = isTask ? await taskDetailsTable(entityId!) : null;
+    const subject = params.emailSubject ?? (details ? `${route.subject}: ${truncate(details.label, 80)}` : route.subject);
     const { html, text } = renderEmail({
       heading: subject,
       intro: message,
+      tables: details ? [details.table] : undefined,
       ctaUrl: `${baseUrl}${path}`,
       ctaLabel: route.cta,
       baseUrl
@@ -126,4 +134,9 @@ export async function getAdminIds(superAdminOnly = false): Promise<string[]> {
       : `SELECT id FROM users WHERE role::text IN ('Admin', 'SuperAdmin') AND is_active = true`
   );
   return rows.map((r) => r.id);
+}
+
+function truncate(s: string, n: number) {
+  const one = String(s ?? "").replace(/\s+/g, " ").trim();
+  return one.length > n ? `${one.slice(0, n - 1)}…` : one;
 }

@@ -41,6 +41,7 @@ function statusBadge(status: string) {
     "Closed Pending Approval":  { bg: "rgba(245,166,35,0.12)",  color: "#d97706" },
     "Closed Accepted":          { bg: "rgba(46,189,133,0.12)",  color: "#059669" },
     "Dropped":                  { bg: "rgba(107,114,128,0.12)", color: "#6b7280" },
+    "Parked":                   { bg: "rgba(107,114,128,0.12)", color: "#6b7280" },
     "Red":    { bg: "rgba(198,40,40,0.12)",  color: "#c62828" },
     "Amber":  { bg: "rgba(245,166,35,0.12)", color: "#d97706" },
     "Green":  { bg: "rgba(46,189,133,0.12)", color: "#059669" },

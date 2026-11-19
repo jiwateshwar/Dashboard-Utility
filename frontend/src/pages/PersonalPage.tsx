@@ -4,6 +4,7 @@ import { TaskFilterBar } from "../components/TaskFilterBar";
 import { EditableDecisionTable, EditableRiskTable, EditableTaskTable } from "../components/WorkTables";
 import { EscalatedToYou } from "../components/EscalatedToYou";
 import { ApprovalQueue } from "../components/ApprovalQueue";
+import { useRememberedState } from "../lib/navMemory";
 
 // My Work: one view (tables with Edit in place, like the dashboard page),
 // plus escalations raised to me and closures waiting on my approval.
@@ -26,7 +27,7 @@ function CountBadge({ count }: { count: number }) {
 
 export default function PersonalPage() {
   const [data, setData] = useState<any>(null);
-  const [tab, setTab] = useState<Tab>("work");
+  const [tab, setTab] = useRememberedState<Tab>("personal.tab", "work");
   const [accounts, setAccounts] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
@@ -47,7 +48,7 @@ export default function PersonalPage() {
 
   const openTasks = data.tasks.filter((t: any) => t.status !== "Closed Accepted" && t.status !== "Dropped");
   const overdueTasks = data.tasks.filter((t: any) =>
-    t.target_date && !["Closed Accepted", "Closed Pending Approval", "Dropped"].includes(t.status) && daysPastDue(t.target_date) > 0);
+    t.target_date && !["Closed Accepted", "Closed Pending Approval", "Dropped", "Parked"].includes(t.status) && daysPastDue(t.target_date) > 0);
   const activeRisks = data.risks.filter((r: any) => r.status !== "Closed" && r.status !== "Mitigated");
   const pendingDecisions = data.decisions.filter((d: any) => d.status === "Pending");
   const common = { accounts, users, me, onChanged: reload };

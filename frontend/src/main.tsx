@@ -7,7 +7,7 @@ import "./theme-frost.css";
 import { applySeasonalTheme } from "./lib/seasonalTheme";
 
 // Seasonal look (Frost in winter). Re-checked hourly so a tab left open
-// across 1 December / 1 March switches without a reload.
+// across 19 November / 1 March switches without a reload.
 applySeasonalTheme();
 setInterval(() => applySeasonalTheme(), 60 * 60 * 1000);
 

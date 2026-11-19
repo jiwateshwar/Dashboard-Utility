@@ -1,6 +1,6 @@
 import dayjs from "dayjs";
 import { query } from "../db.js";
-import { CLOSED_TASK_STATUSES } from "../constants.js";
+import { CLOSED_TASK_STATUSES, NO_OVERDUE_TASK_STATUSES } from "../constants.js";
 import { emailUser, userWantsEmail } from "./mailer.js";
 import { getAppBaseUrl, isEmailLive } from "./emailSettings.js";
 import { ListItem, Section, Table, renderEmail } from "./emailTemplates.js";
@@ -36,6 +36,7 @@ async function activeUsersFor(onlyUserId?: string): Promise<{ id: string; name: 
 async function buildDailySections(user: { id: string; role: string; email_digest_only: boolean }, baseUrl: string): Promise<Section[]> {
   const uid = user.id;
   const dash = (id: string) => `${baseUrl}/dashboards/${id}`;
+  const taskUrl = (id: string) => `${baseUrl}/tasks/${id}`;
   const isAdmin = user.role === "Admin" || user.role === "SuperAdmin";
 
   const myTasks = await query(
@@ -43,18 +44,17 @@ async function buildDailySections(user: { id: string; role: string; email_digest
      FROM tasks t
      JOIN dashboards d ON d.id = t.dashboard_id AND d.is_active = true
      WHERE t.is_archived = false
-       AND t.status::text <> 'Closed Pending Approval'
        AND NOT (t.status::text = ANY($2))
        AND EXISTS (SELECT 1 FROM task_owners tow WHERE tow.task_id = t.id AND tow.user_id = $1)
        AND t.target_date <= CURRENT_DATE + $3::int
      ORDER BY t.target_date`,
-    [uid, CLOSED_TASK_STATUSES, DUE_SOON_DAYS]
+    [uid, NO_OVERDUE_TASK_STATUSES, DUE_SOON_DAYS]
   );
   const today = dayjs().startOf("day");
   const overdue: ListItem[] = [];
   const dueSoon: ListItem[] = [];
   for (const t of myTasks.rows) {
-    const item = { title: t.label, meta: `${t.dashboard_name} · due ${fmtDate(t.target_date)}`, url: dash(t.dashboard_id), ...dueBadge(t.target_date) };
+    const item = { title: t.label, meta: `${t.dashboard_name} · due ${fmtDate(t.target_date)}`, url: taskUrl(t.id), ...dueBadge(t.target_date) };
     (dayjs(t.target_date).isBefore(today) ? overdue : dueSoon).push(item);
   }
 
@@ -86,7 +86,7 @@ async function buildDailySections(user: { id: string; role: string; email_digest
   // Things blocked on this user.
   const waiting: ListItem[] = [];
   const closures = await query(
-    `SELECT COALESCE(t.title, t.item_details) AS label, t.closure_requested_at, t.dashboard_id, d.name AS dashboard_name
+    `SELECT t.id, COALESCE(t.title, t.item_details) AS label, t.closure_requested_at, t.dashboard_id, d.name AS dashboard_name
      FROM tasks t JOIN dashboards d ON d.id = t.dashboard_id AND d.is_active = true
      WHERE t.created_by = $1 AND t.status::text = 'Closed Pending Approval' AND t.is_archived = false
      ORDER BY t.closure_requested_at NULLS LAST`,
@@ -94,7 +94,7 @@ async function buildDailySections(user: { id: string; role: string; email_digest
   );
   for (const c of closures.rows) {
     const days = c.closure_requested_at ? dayjs().diff(dayjs(c.closure_requested_at), "day") : null;
-    waiting.push({ title: `Approve closure: ${c.label}`, meta: `${c.dashboard_name}${days !== null ? ` · requested ${days === 0 ? "today" : `${days}d ago`}` : ""}`, url: dash(c.dashboard_id), badge: "closure", badgeColor: BLUE });
+    waiting.push({ title: `Approve closure: ${c.label}`, meta: `${c.dashboard_name}${days !== null ? ` · requested ${days === 0 ? "today" : `${days}d ago`}` : ""}`, url: taskUrl(c.id), badge: "closure", badgeColor: BLUE });
   }
   const ownedDashIds = (
     await query(
@@ -143,13 +143,13 @@ async function buildDailySections(user: { id: string; role: string; email_digest
 
   // Escalations raised for this user by this morning's 02:00 run.
   const esc = await query(
-    `SELECT DISTINCT ON (e.entity_id) e.message, e.dashboard_id, d.name AS dashboard_name
+    `SELECT DISTINCT ON (e.entity_id) e.message, e.dashboard_id, e.entity_type, e.entity_id, d.name AS dashboard_name
      FROM escalations e JOIN dashboards d ON d.id = e.dashboard_id AND d.is_active = true
      WHERE e.notified_user_id = $1 AND e.created_at > now() - interval '24 hours'
      ORDER BY e.entity_id, e.created_at DESC`,
     [uid]
   );
-  const escalations: ListItem[] = esc.rows.map((e) => ({ title: e.message, meta: e.dashboard_name, url: dash(e.dashboard_id) }));
+  const escalations: ListItem[] = esc.rows.map((e) => ({ title: e.message, meta: e.dashboard_name, url: e.entity_type === "Task" ? taskUrl(e.entity_id) : dash(e.dashboard_id) }));
 
   const sections: Section[] = [
     { title: "Overdue", items: overdue, moreUrl: `${baseUrl}/personal` },
@@ -161,7 +161,7 @@ async function buildDailySections(user: { id: string; role: string; email_digest
   // Digest-only users skip instant emails, so roll those notifications in here.
   if (user.email_digest_only) {
     const unread = await query(
-      `SELECT n.message, n.dashboard_id FROM notifications n
+      `SELECT n.message, n.dashboard_id, n.entity_type, n.entity_id FROM notifications n
        WHERE n.user_id = $1 AND n.is_read = false AND n.created_at > now() - interval '24 hours'
          AND n.type = ANY($2)
        ORDER BY n.created_at DESC`,
@@ -169,7 +169,7 @@ async function buildDailySections(user: { id: string; role: string; email_digest
     );
     sections.push({
       title: "New notifications (last 24h)",
-      items: unread.rows.map((n) => ({ title: n.message, url: n.dashboard_id ? dash(n.dashboard_id) : `${baseUrl}/notifications` })),
+      items: unread.rows.map((n) => ({ title: n.message, url: n.entity_type === "Task" && n.entity_id ? taskUrl(n.entity_id) : n.dashboard_id ? dash(n.dashboard_id) : `${baseUrl}/notifications` })),
       moreUrl: `${baseUrl}/notifications`
     });
   }
@@ -236,7 +236,7 @@ async function buildWeeklyTables(user: { id: string; role: string }, baseUrl: st
      SELECT d.id, d.name,
        (SELECT count(*)::int FROM tasks t WHERE t.dashboard_id = d.id AND t.is_archived = false AND NOT (t.status::text = ANY($2))) AS open_tasks,
        (SELECT count(*)::int FROM tasks t WHERE t.dashboard_id = d.id AND t.is_archived = false AND NOT (t.status::text = ANY($2))
-          AND t.status::text <> 'Closed Pending Approval' AND t.target_date < CURRENT_DATE) AS overdue,
+          AND t.status::text NOT IN ('Closed Pending Approval', 'Parked') AND t.target_date < CURRENT_DATE) AS overdue,
        (SELECT count(*)::int FROM risks r WHERE r.dashboard_id = d.id AND r.is_archived = false AND r.status::text = 'Open'
           AND r.impact_level::text IN ('High', 'Critical')) AS hot_risks,
        (SELECT count(*)::int FROM decisions x WHERE x.dashboard_id = d.id AND x.is_archived = false AND x.status::text = 'Pending') AS pending_decisions,
@@ -260,7 +260,7 @@ async function buildWeeklyTables(user: { id: string; role: string }, baseUrl: st
     const team = await query(
       `SELECT u.name,
          count(t.id)::int AS open_tasks,
-         count(t.id) FILTER (WHERE t.status::text <> 'Closed Pending Approval' AND t.target_date < CURRENT_DATE)::int AS overdue,
+         count(t.id) FILTER (WHERE t.status::text NOT IN ('Closed Pending Approval', 'Parked') AND t.target_date < CURRENT_DATE)::int AS overdue,
          count(t.id) FILTER (WHERE t.created_at < now() - interval '20 days')::int AS aging
        FROM users u
        JOIN task_owners tow ON tow.user_id = u.id

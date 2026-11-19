@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import { requireAuth } from "../middleware/auth.js";
 import { query } from "../db.js";
 import { getUserRole, isDashboardOwner, hasDashboardAccess, isAdminRole } from "../services/permission.js";
-import { CLOSED_TASK_STATUSES } from "../constants.js";
+import { canBeOverdue } from "../constants.js";
 import { notifyUser, notifyUsers, getAdminIds, getDashboardOwnerIds } from "../services/notifying.js";
 
 const router = Router();
@@ -592,11 +592,11 @@ router.get("/:id/summary", async (req, res) => {
   const decisionRows = raw.filter((r) => r.kind === "decision");
   const now = dayjs();
 
-  const closedStatuses = [...CLOSED_TASK_STATUSES, "Closed Pending Approval"];
   const taskStats = {
     open: taskRows.filter((t) => t.status === "Open").length,
     inProgress: taskRows.filter((t) => t.status === "In Progress").length,
-    overdue: taskRows.filter((t) => !closedStatuses.includes(t.status) && t.deadline && now.isAfter(dayjs(t.deadline))).length,
+    parked: taskRows.filter((t) => t.status === "Parked").length,
+    overdue: taskRows.filter((t) => canBeOverdue(t.status) && t.deadline && now.isAfter(dayjs(t.deadline))).length,
     pendingApproval: taskRows.filter((t) => t.status === "Closed Pending Approval").length
   };
   const riskStats = {

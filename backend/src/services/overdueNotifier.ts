@@ -1,5 +1,5 @@
 import { query } from "../db.js";
-import { CLOSED_TASK_STATUSES } from "../constants.js";
+import { NO_OVERDUE_TASK_STATUSES } from "../constants.js";
 import { notifyUser } from "./notifying.js";
 
 /** Runs daily — reminds every owner of an overdue, still-open task. Recurring by design: fires again each day the task remains overdue. */
@@ -13,10 +13,9 @@ export async function notifyOverdueTasks() {
      FROM tasks t
      JOIN dashboards d ON d.id = t.dashboard_id
      WHERE t.is_archived = false
-       AND t.status != 'Closed Pending Approval'
        AND NOT (t.status::text = ANY($1))
        AND t.target_date < CURRENT_DATE`,
-    [CLOSED_TASK_STATUSES]
+    [NO_OVERDUE_TASK_STATUSES]
   );
 
   for (const t of rows) {

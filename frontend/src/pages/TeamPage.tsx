@@ -4,6 +4,7 @@ import { TaskFilterBar } from "../components/TaskFilterBar";
 import { PendingApprovalRow } from "../components/PendingApprovalRow";
 import { EditableDecisionTable, EditableRiskTable, EditableTaskTable } from "../components/WorkTables";
 import { EscalatedToYou } from "../components/EscalatedToYou";
+import { useRememberedState } from "../lib/navMemory";
 
 // Team View: my reports' work in one view (tables with Edit in place, like the
 // dashboard page), escalations raised to me about it, and their closure requests.
@@ -26,9 +27,9 @@ function CountBadge({ count }: { count: number }) {
 
 export default function TeamPage() {
   const [data, setData] = useState<any>(null);
-  const [tab, setTab] = useState<Tab>("work");
-  const [showOverdue, setShowOverdue] = useState(false);
-  const [showRed, setShowRed] = useState(false);
+  const [tab, setTab] = useRememberedState<Tab>("team.tab", "work");
+  const [showOverdue, setShowOverdue] = useRememberedState("team.overdue", false);
+  const [showRed, setShowRed] = useRememberedState("team.red", false);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [me, setMe] = useState<any>(null);
@@ -49,11 +50,12 @@ export default function TeamPage() {
 
   const pendingApprovals: any[] = data.pendingApprovals ?? [];
   const isOverdue = (date?: string) => !!date && daysPastDue(date) > 0;
-  const closedTask = (s: string) => ["Closed Accepted", "Closed Pending Approval", "Dropped"].includes(s);
+  // Closed, awaiting closure approval, or Parked — such tasks are never overdue.
+  const closedTask = (s: string) => ["Closed Accepted", "Closed Pending Approval", "Dropped", "Parked"].includes(s);
 
   const filteredTasks = data.tasks.filter((t: any) => {
     if (showRed && (closedTask(t.status) || !isOverdue(t.target_date))) return false;
-    if (showOverdue && !isOverdue(t.target_date)) return false;
+    if (showOverdue && (closedTask(t.status) || !isOverdue(t.target_date))) return false;
     return true;
   });
   const filteredRisks = data.risks.filter((r: any) => {

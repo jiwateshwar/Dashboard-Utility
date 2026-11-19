@@ -1,6 +1,6 @@
 {
   "name": "prism-backend",
-  "version": "Beta v12.11.26",
+  "version": "Beta v19.11.26",
   "private": true,
   "type": "module",
   "scripts": {
